@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THE DAUNATIONAL 2</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1018;--panel:#151c28;--line:#293447;--muted:#93a0b4;--accent:#e6b34a;--red:#bd4b4b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#202b3e 0,transparent 35%),var(--bg);color:#f2f4f8;font:16px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:1100px;margin:auto;padding:28px 20px 60px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}
+h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0;letter-spacing:.04em}h1 span{color:var(--accent)}h2{font-size:23px;margin:0 0 16px}
+.sub{color:var(--muted);margin-top:8px}.panel{background:#151c28eF;border:1px solid var(--line);border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 12px 35px #0003}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+input,button{font:inherit;border-radius:10px;padding:12px 15px}input{background:#0d1420;color:white;border:1px solid #344156;min-width:0;flex:1}button{background:var(--accent);color:#17130a;border:0;font-weight:750;cursor:pointer}button.secondary{background:#273449;color:#f2f4f8}button.danger{background:#63343b;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
+small,.muted{color:var(--muted)}.hidden{display:none!important}.stat{font-size:28px;font-weight:800}.player{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.tag{font-size:12px;color:var(--accent);border:1px solid #8e7136;border-radius:20px;padding:3px 9px}.notice{padding:12px 14px;border-radius:10px;background:#263448;color:#dce5f2;margin-top:12px}.error{background:#49272d;color:#ffdce0}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:11px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600}
+@media(max-width:600px){main{padding:20px 13px}header{align-items:flex-start;flex-direction:column}.panel{padding:17px}td,th{padding:8px;font-size:14px}}
+</style>
+</head>
+<body><main>
+<header><div><h1>THE <span>DAUNATIONAL</span> 2</h1><div class="sub">FRIENDS ONLY · DOTA 2 TOURNAMENT</div></div><span class="tag" id="connection">ЛОКАЛЬНЫЙ РЕЖИМ</span></header>
+<section class="panel" id="login"><h2>Вход в турнир</h2><div class="row"><input id="code" placeholder="Код турнира"><input id="nick" placeholder="Твой ник в Dota 2"><button id="enter">ВОЙТИ</button></div><div class="sub">Для тестирования можно использовать любой код и ник.</div><div id="loginMsg"></div></section>
+<div id="app" class="hidden">
+<section class="panel"><div class="row" style="justify-content:space-between"><div><h2 style="margin:0">ЛОББИ</h2><div class="sub">Участники турнира</div></div><div><span class="stat" id="count">0</span> <span class="muted">игроков</span></div></div>
+<div id="adminTools" class="hidden" style="margin-top:18px"><div class="row"><input id="newPlayer" placeholder="Добавить тестового игрока"><button id="addPlayer">ДОБАВИТЬ</button><button class="secondary" id="start">НАЧАТЬ МАТЧ</button></div><small>Организаторский режим включён для ника, содержащего «admin» (демо-режим).</small></div>
+<div id="players" style="margin-top:12px"></div><div id="lobbyMsg"></div></section>
+<section class="grid"><div class="panel"><h2>ТУРНИР</h2><div class="stat">5 × 3</div><div class="muted">5 сессий · 15 матчей</div></div><div class="panel"><h2>СИСТЕМА ОЧКОВ</h2><div class="stat">100 / 40</div><div class="muted">Победа / поражение · MVP +15</div></div></section>
+<section class="panel"><h2>ТАБЛИЦА ЛИДЕРОВ</h2><table><thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Матчи</th></tr></thead><tbody id="leaders"><tr><td colspan="4" class="muted">Пока нет результатов</td></tr></tbody></table></section>
+<section class="panel"><h2>ИСТОРИЯ МАТЧЕЙ</h2><div id="history" class="muted">Матчи ещё не сыграны</div></section>
+<div class="row"><button class="secondary" id="logout">ВЫЙТИ</button><small id="who"></small></div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let user=null,state={players:[],matches:[]};const key=()=> 'daunational2:'+($('code').value.trim()||sessionStorage.tourney||'demo');
+function load(){try{state=JSON.parse(localStorage.getItem(key()))||{players:[],matches:[]}}catch{state={players:[],matches:[]}}render()}
+function save(){localStorage.setItem(key(),JSON.stringify(state));render()}
+function render(){$('count').textContent=state.players.length;$('players').innerHTML=state.players.map((p,i)=>'<div class="player"><span>'+(i+1)+'. '+esc(p.name)+'</span><span class="muted">'+(p.points||0)+' очк.</span></div>').join('')||'<div class="muted">Пока никого нет</div>';
+$('leaders').innerHTML=[...state.players].sort((a,b)=>(b.points||0)-(a.points||0)).map((p,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(p.name)+'</td><td>'+(p.points||0)+'</td><td>'+(p.games||0)+'</td></tr>').join('')||'<tr><td colspan="4" class="muted">Пока нет результатов</td></tr>';
+$('history').innerHTML=state.matches.map((m,i)=>'<div class="player"><span>Матч '+(i+1)+': '+esc(m.winner)+'</span><span class="muted">'+esc(m.date)+'</span></div>').join('')||'Матчи ещё не сыграны'}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('enter').onclick=()=>{const n=$('nick').value.trim(),c=$('code').value.trim();if(!n||!c){$('loginMsg').textContent='Укажи код турнира и ник.';return}user=n;sessionStorage.tourney=c;sessionStorage.nick=n;$('login').classList.add('hidden');$('app').classList.remove('hidden');$('who').textContent='Вы вошли как '+n;$('adminTools').classList.toggle('hidden',!n.toLowerCase().includes('admin'));load()};
+$('addPlayer').onclick=()=>{let n=$('newPlayer').value.trim();if(!n)return;if(state.players.some(p=>p.name.toLowerCase()===n.toLowerCase()))return;$('newPlayer').value='';state.players.push({name:n,points:0,games:0});save()};
+$('start').onclick=()=>{if(state.players.length<2){$('lobbyMsg').textContent='Для тестового матча нужно минимум 2 игрока.';return}const shuffled=[...state.players].sort(()=>Math.random()-.5);let cap=[shuffled[0].name,shuffled[1].name];$('lobbyMsg').textContent='Капитаны на этот матч: '+cap.join(' и ')+'. Черновик распределения команд пока демонстрационный.'};
+$('logout').onclick=()=>{user=null;$('app').classList.add('hidden');$('login').classList.remove('hidden')};
+if(sessionStorage.tourney){$('code').value=sessionStorage.tourney;$('nick').value=sessionStorage.nick||''}
+</script></body></html>
