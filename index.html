@@ -11,7 +11,7 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0;letter-spacing:.04em
 .sub{color:var(--muted);margin-top:8px}.panel{background:#151c28eF;border:1px solid var(--line);border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 12px 35px #0003}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
 input,button{font:inherit;border-radius:10px;padding:12px 15px}input{background:#0d1420;color:white;border:1px solid #344156;min-width:0;flex:1}button{background:var(--accent);color:#17130a;border:0;font-weight:750;cursor:pointer}button.secondary{background:#273449;color:#f2f4f8}button.danger{background:#63343b;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
-small,.muted{color:var(--muted)}.hidden{display:none!important}.stat{font-size:28px;font-weight:800}.player{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.tag{font-size:12px;color:var(--accent);border:1px solid #8e7136;border-radius:20px;padding:3px 9px}.notice{padding:12px 14px;border-radius:10px;background:#263448;color:#dce5f2;margin-top:12px}.error{background:#49272d;color:#ffdce0}
+small,.muted{color:var(--muted)}.hidden{display:none!important}.stat{font-size:28px;font-weight:800}.player{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.tag{font-size:12px;color:var(--accent);border:1px solid #8e7136;border-radius:20px;padding:3px 9px}.notice{padding:12px 14px;border-radius:10px;background:#263448;color:#dce5f2;margin-top:12px}.error{background:#49272d;color:#ffdce0}.modal-backdrop{position:fixed;inset:0;background:#05080dcc;display:flex;align-items:center;justify-content:center;padding:18px;z-index:20}.modal{width:min(480px,100%);background:#171f2d;border:1px solid #46536a;border-radius:18px;padding:26px;box-shadow:0 24px 80px #0009}.modal h2{margin:0 0 12px}.modal p{color:#c4cede;margin:0 0 20px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:11px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600}
 @media(max-width:600px){main{padding:20px 13px}header{align-items:flex-start;flex-direction:column}.panel{padding:17px}td,th{padding:8px;font-size:14px}}
 </style>
@@ -28,6 +28,13 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:11px;bor
 <section class="panel"><h2>ИСТОРИЯ МАТЧЕЙ</h2><div id="history" class="muted">Матчи ещё не сыграны</div></section>
 <div class="row"><button class="secondary" id="logout">ВЫЙТИ</button><small id="who"></small></div>
 </div>
+<div id="nickConfirm" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+ <div class="modal">
+  <h2 id="confirmTitle">Подтверждение ника</h2>
+  <p>После подтверждения ник <strong id="confirmNick"></strong> нельзя будет изменить. Все очки за матчи будут закреплены за этим ником. Проверь написание перед продолжением.</p>
+  <div class="modal-actions"><button class="secondary" id="cancelNick">НАЗАД</button><button id="confirmNickBtn">ПОДТВЕРЖДАЮ</button></div>
+ </div>
+</div>
 </main>
 <script>
 const $=id=>document.getElementById(id);let user=null,state={players:[],matches:[]};const key=()=> 'daunational2:'+($('code').value.trim()||sessionStorage.tourney||'demo');
@@ -37,9 +44,32 @@ function render(){$('count').textContent=state.players.length;$('players').inner
 $('leaders').innerHTML=[...state.players].sort((a,b)=>(b.points||0)-(a.points||0)).map((p,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(p.name)+'</td><td>'+(p.points||0)+'</td><td>'+(p.games||0)+'</td></tr>').join('')||'<tr><td colspan="4" class="muted">Пока нет результатов</td></tr>';
 $('history').innerHTML=state.matches.map((m,i)=>'<div class="player"><span>Матч '+(i+1)+': '+esc(m.winner)+'</span><span class="muted">'+esc(m.date)+'</span></div>').join('')||'Матчи ещё не сыграны'}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-$('enter').onclick=()=>{const n=$('nick').value.trim(),c=$('code').value.trim();if(!n||!c){$('loginMsg').textContent='Укажи код турнира и ник.';return}user=n;sessionStorage.tourney=c;sessionStorage.nick=n;$('login').classList.add('hidden');$('app').classList.remove('hidden');$('who').textContent='Вы вошли как '+n;$('adminTools').classList.toggle('hidden',!n.toLowerCase().includes('admin'));load()};
+let pendingNick='',pendingCode='';
+function finishLogin(n,c){
+ user=n;sessionStorage.tourney=c;sessionStorage.nick=n;
+ const profileKey='daunational2:profile:'+c;
+ localStorage.setItem(profileKey,JSON.stringify({nickname:n,locked:true}));
+ $('nick').value=n;$('nick').disabled=true;
+ $('nickConfirm').classList.add('hidden');
+ $('login').classList.add('hidden');$('app').classList.remove('hidden');
+ $('who').textContent='Вы вошли как '+n;
+ $('adminTools').classList.toggle('hidden',!n.toLowerCase().includes('admin'));
+ load();
+}
+$('enter').onclick=()=>{
+ const n=$('nick').value.trim(),c=$('code').value.trim();
+ if(!n||!c){$('loginMsg').textContent='Укажи код турнира и ник.';return}
+ let saved=null;try{saved=JSON.parse(localStorage.getItem('daunational2:profile:'+c)||'null')}catch{}
+ if(saved&&saved.locked){
+  if(saved.nickname.toLowerCase()!==n.toLowerCase()){$('loginMsg').textContent='Для этого кода уже закреплён ник «'+saved.nickname+'». Изменить его нельзя.';$('nick').value=saved.nickname;$('nick').disabled=true;return}
+  finishLogin(saved.nickname,c);return;
+ }
+ pendingNick=n;pendingCode=c;$('confirmNick').textContent=n;$('nickConfirm').classList.remove('hidden');
+};
+$('cancelNick').onclick=()=>{$('nickConfirm').classList.add('hidden');pendingNick='';pendingCode=''};
+$('confirmNickBtn').onclick=()=>{if(pendingNick&&pendingCode)finishLogin(pendingNick,pendingCode)};
 $('addPlayer').onclick=()=>{let n=$('newPlayer').value.trim();if(!n)return;if(state.players.some(p=>p.name.toLowerCase()===n.toLowerCase()))return;$('newPlayer').value='';state.players.push({name:n,points:0,games:0});save()};
 $('start').onclick=()=>{if(state.players.length<2){$('lobbyMsg').textContent='Для тестового матча нужно минимум 2 игрока.';return}const shuffled=[...state.players].sort(()=>Math.random()-.5);let cap=[shuffled[0].name,shuffled[1].name];$('lobbyMsg').textContent='Капитаны на этот матч: '+cap.join(' и ')+'. Черновик распределения команд пока демонстрационный.'};
 $('logout').onclick=()=>{user=null;$('app').classList.add('hidden');$('login').classList.remove('hidden')};
-if(sessionStorage.tourney){$('code').value=sessionStorage.tourney;$('nick').value=sessionStorage.nick||''}
+if(sessionStorage.tourney){$('code').value=sessionStorage.tourney;$('nick').value=sessionStorage.nick||'';let p=null;try{p=JSON.parse(localStorage.getItem('daunational2:profile:'+sessionStorage.tourney)||'null')}catch{}if(p&&p.locked){$('nick').value=p.nickname;$('nick').disabled=true}}
 </script></body></html>
