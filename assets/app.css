@@ -49,6 +49,8 @@ button:disabled { cursor: default; }
 .brand { font: 800 24px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 .brand span { color: var(--dim); }
 .brand b { color: var(--signal); }
+.bar-left { display: flex; align-items: center; gap: clamp(14px, 2.6vw, 34px); min-width: 0; }
+.bar-right { display: flex; align-items: center; gap: 12px; flex: none; }
 .bar-nav { display: flex; align-items: center; gap: clamp(10px, 2vw, 22px); }
 .sync { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); }
 .sync.on { background: var(--team-a); }
@@ -311,7 +313,22 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 .confirm-text { font-size: 18px; }
 .rules { display: grid; grid-template-columns: 90px 1fr; gap: 10px 14px; }
 .rules dt { font-weight: 700; color: var(--signal); }
+.place-1 { --medal: var(--signal); }
+.place-2 { --medal: #c9d1dc; }
+.place-3 { --medal: #d99a62; }
+.prizes { margin: 18px 0 16px; }
+.prizes h3 { font-size: 24px; margin-bottom: 8px; }
+.dialog-head + .prizes { margin-top: 0; }
+.prizes ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.prize { padding: 10px 12px; background: var(--panel-2); border-top: 3px solid var(--medal); border-radius: 3px; }
+.prize strong { display: block; font: 900 30px/1 var(--display); color: var(--medal); text-transform: uppercase; }
+.prize span { display: block; margin-top: 4px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.prize span.tbd { color: var(--dim); font-weight: 400; }
 .table-wrap { overflow-x: auto; }
+.scores td:first-child { font-weight: 700; color: var(--dim); }
+.scores tr[class^='place-'] td:first-child { color: var(--medal); font: 900 22px/1 var(--display); }
+.scores tr.vacant td { color: #5d6573; }
+.scores tr.vacant .n { font-weight: 400; }
 .scores { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .scores th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); padding: 6px 10px 6px 0; }
 .scores td { padding: 9px 10px 9px 0; border-top: 1px solid var(--line); }
@@ -339,6 +356,8 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 /* ---- Телефон ---- */
 @media (max-width: 680px) {
   .brand { font-size: 21px; }
+  .prize { padding: 8px 9px; }
+  .prize strong { font-size: 22px; white-space: nowrap; }
   .entry { grid-template-columns: 1fr 1fr; }
   .entry .btn { grid-column: 1 / -1; }
   .slots { grid-template-columns: 1fr; }
@@ -374,6 +393,12 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
   }
   .dock b { font-size: 26px; }
   .dock .btn.big { padding: 13px 20px; font-size: 22px; }
+}
+
+/* ---- Самые узкие телефоны: шапка в одну строку ---- */
+@media (max-width: 420px) {
+  .bar { gap: 10px; }
+  .sync { display: none; }
 }
 
 /* ---- Невысокие экраны ноутбуков: доска целиком без прокрутки ---- */

@@ -4,6 +4,13 @@ import { isHost, draftClock } from './main.js';
 const ATTRS = [['str', 'Сила'], ['agi', 'Ловкость'], ['int', 'Интеллект'], ['all', 'Универсальные']];
 const STAGES = [['lobby', 'Лобби'], ['captains', 'Капитаны'], ['squads', 'Составы'], ['coin', 'Монетка'], ['draft', 'Драфт'], ['result', 'Итог']];
 
+// Призы за места. Когда станут известны, вместо null впиши текст приза.
+const PRIZES = [
+  { place: 1, prize: null },
+  { place: 2, prize: null },
+  { place: 3, prize: null },
+];
+
 const nick = (r, id) => r.players.find(p => p.id === id)?.nick ?? '—';
 const teamName = (r, t) => nick(r, r.captains[t]);
 const heroOf = (app, id) => app.heroes.get(id);
@@ -27,13 +34,17 @@ export function appView(app, a) {
 
 function header(app, a) {
   return html`<header class="bar">
-    <div class="brand"><span>The</span> Daunational <b>2</b></div>
-    <nav class="bar-nav">
-      ${app.room ? html`<span class=${cls('sync', app.live && 'on')} title=${app.live ? 'Обновления в реальном времени' : 'Подключаемся, данные обновляются раз в 3 секунды'}></span>` : nothing}
-      <button class="link" @click=${a.openRules}>Формат</button>
-      <button class="link" @click=${a.openScores}>Таблица</button>
-      ${app.room ? html`<button class="link dim" @click=${a.exit}>Выйти</button>` : nothing}
-    </nav>
+    <div class="bar-left">
+      <div class="brand"><span>The</span> Daunational <b>2</b></div>
+      <nav class="bar-nav">
+        <button class="link" @click=${a.openRules}>Формат</button>
+        <button class="link" @click=${a.openScores}>Таблица</button>
+      </nav>
+    </div>
+    ${app.room ? html`<div class="bar-right">
+      <span class=${cls('sync', app.live && 'on')} title=${app.live ? 'Обновления в реальном времени' : 'Подключаемся, данные обновляются раз в 3 секунды'}></span>
+      <button class="link dim" @click=${a.exit}>Выйти</button>
+    </div>` : nothing}
   </header>`;
 }
 
@@ -349,18 +360,39 @@ function rulesOverlay(a) {
     <dt>Очки</dt><dd>Победа +100, поражение +40, MVP ещё +15. Очки суммируются между играми.</dd>
     <dt>Ник</dt><dd>Один на весь турнир: очки записываются на него. Под другим ником очки не сложатся.</dd>
     <dt>Возврат</dt><dd>Вылетел или сменил устройство — введи свой ник и код комнаты и подтверди, что это ты.</dd>
-  </dl>`);
+  </dl>${prizesBlock()}`);
+}
+
+function prizesBlock() {
+  return html`<section class="prizes">
+    <h3>Призы</h3>
+    <ol>${PRIZES.map(p => html`<li class=${'prize place-' + p.place}>
+      <strong>${p.place} место</strong>
+      <span class=${p.prize ? '' : 'tbd'}>${p.prize || 'Объявим позже'}</span>
+    </li>`)}</ol>
+  </section>`;
 }
 
 function scoresOverlay(app, a) {
-  const body = app.scoresError ? html`<p class="sub">${app.scoresError}</p>`
-    : !app.scores ? html`<p class="sub">Загружаем…</p>`
-    : !app.scores.length ? html`<p class="sub">Завершённых игр пока нет.</p>`
-    : html`<div class="table-wrap"><table class="scores">
-        <thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Игры</th><th>Победы</th><th>MVP</th></tr></thead>
-        <tbody>${app.scores.map((p, i) => html`<tr class=${i === 0 ? 'lead-row' : ''}><td>${i + 1}</td><td class="n">${p.nickname}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}</tbody>
-      </table></div>`;
-  return overlay(a, 'Турнирная таблица', body);
+  const rows = app.scores || [];
+  const vacant = Array.from({ length: Math.max(0, PRIZES.length - rows.length) }, (_, i) => rows.length + i + 1);
+  const placeClass = i => (i < PRIZES.length ? 'place-' + (i + 1) : '');
+  const table = html`<div class="table-wrap"><table class="scores">
+      <thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Игры</th><th>Победы</th><th>MVP</th></tr></thead>
+      <tbody>
+        ${rows.map((p, i) => html`<tr class=${placeClass(i)}><td>${i + 1}</td><td class="n">${p.nickname}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}
+        ${vacant.map(n => html`<tr class=${placeClass(n - 1) + ' vacant'}><td>${n}</td><td class="n">Место свободно</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`)}
+      </tbody>
+    </table></div>`;
+  const note = app.scoresError ? app.scoresError
+    : !app.scores ? 'Загружаем…'
+    : !rows.length ? 'Завершённых игр пока нет.'
+    : '';
+  return overlay(a, 'Турнирная таблица', html`
+    ${prizesBlock()}
+    ${app.scoresError ? nothing : table}
+    ${note ? html`<p class="hint">${note}</p>` : nothing}
+  `);
 }
 
 function confirmOverlay(app, a) {
