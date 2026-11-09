@@ -29,6 +29,7 @@ export function appView(app, a) {
     ${app.error ? html`<div class="toast" role="alert"><span>${app.error}</span><button class="link" @click=${a.dismissError}>Закрыть</button></div>` : nothing}
     ${app.overlay === 'rules' ? rulesOverlay(a) : nothing}
     ${app.overlay === 'scores' ? scoresOverlay(app, a) : nothing}
+    ${app.overlay === 'admin' ? adminOverlay(app, a) : nothing}
     ${app.confirm ? confirmOverlay(app, a) : nothing}
   `;
 }
@@ -79,7 +80,60 @@ function homeView(app, a) {
       </form>
       <p class="hint">Очки записываются на ник, поэтому пиши его так же, как в игре.</p>
     </div>
-    ${homeBoard(app)}
+    <div class="home-side">
+      ${gameCard(app, a)}
+      ${homeBoard(app)}
+    </div>
+  </section>`;
+}
+
+function gameDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return {
+    day: date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+    weekday: date.toLocaleDateString('ru-RU', { weekday: 'long' }),
+  };
+}
+
+function gameCard(app, a) {
+  const g = app.game;
+  const game = g?.game;
+  const players = g?.players || [];
+  const limit = g?.limit || 10;
+  const mine = players.some(p => p.mine);
+  const full = players.length >= limit;
+  const when = game ? gameDate(game.date) : null;
+  const onJoin = e => { e.preventDefault(); a.joinGame(); };
+  return html`<section class="game-card">
+    <div class="game-head">
+      <div>
+        <p class="eyebrow">Ближайшая игра</p>
+        ${when
+          ? html`<p class="game-date">${when.day}</p><p class="game-when">${when.weekday}${game.time ? `, ${game.time}` : ''}</p>`
+          : html`<p class="game-date">Дата скоро</p><p class="game-when">Организатор объявит дату здесь</p>`}
+      </div>
+      ${game ? html`<span class=${cls('game-count', full && 'full')}>${players.length} / ${limit}</span>` : nothing}
+    </div>
+    ${game ? html`
+      <ol class="game-slots">
+        ${players.map((p, i) => html`<li class=${cls('game-slot', p.mine && 'mine')}>
+          <i>${i + 1}</i><span>${p.nick}</span>
+          ${app.adminPin ? html`<button class="x" aria-label=${'Убрать ' + p.nick} @click=${() => a.adminRemovePlayer(p.nick)}>×</button>` : nothing}
+        </li>`)}
+        ${Array.from({ length: Math.max(0, limit - players.length) }, (_, i) => html`<li class="game-slot empty"><i>${players.length + i + 1}</i><span>Свободно</span></li>`)}
+      </ol>
+      ${mine ? html`<div class="game-action">
+          <p class="game-status">Ты в стаке</p>
+          <button class="btn ghost" ?disabled=${app.busy} @click=${a.leaveGame}>Выйти из стака</button>
+        </div>`
+      : full ? html`<p class="game-status">Стак собран, все места заняты</p>`
+      : html`<form class="game-join" @submit=${onJoin}>
+          <input maxlength="24" autocomplete="nickname" placeholder="Твой ник" aria-label="Твой ник" .value=${app.nick} @input=${e => a.setNick(e.target.value)}>
+          <button class="btn primary" ?disabled=${app.busy}>Присоединиться</button>
+        </form>`}
+    ` : nothing}
+    <button class="link dim game-admin" @click=${a.openAdmin}>${app.adminPin ? 'Управление игрой' : 'Организатор'}</button>
   </section>`;
 }
 
@@ -449,6 +503,31 @@ function scoresOverlay(app, a) {
     ${app.scoresError ? nothing : table}
     ${note ? html`<p class="hint">${note}</p>` : nothing}
   `);
+}
+
+function adminOverlay(app, a) {
+  if (!app.adminPin) {
+    const unlock = e => { e.preventDefault(); a.adminUnlock(e.target.elements.pin.value.trim()); };
+    return overlay(a, 'Организатор', html`<form class="admin-form" @submit=${unlock}>
+      <label class="field"><span>PIN организатора</span><input name="pin" type="password" autocomplete="off" required></label>
+      <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Войти</button></div>
+    </form>`);
+  }
+  const game = app.game?.game;
+  const save = e => { e.preventDefault(); const f = e.target.elements; a.adminSave(f.date.value, f.time.value); };
+  return overlay(a, 'Управление игрой', html`<form class="admin-form" @submit=${save}>
+    <div class="admin-row">
+      <label class="field"><span>Дата игры</span><input name="date" type="date" required .value=${game?.date || ''}></label>
+      <label class="field"><span>Время (необязательно)</span><input name="time" type="time" .value=${game?.time || ''}></label>
+    </div>
+    <p class="hint">Если дата уже назначена, список игроков при её смене сохранится.</p>
+    <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Сохранить</button></div>
+  </form>
+  ${game ? html`<div class="controls">
+    <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminClearList}>Очистить список</button>
+    <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminRemoveGame}>Снять игру</button>
+  </div>` : nothing}
+  <div class="controls end"><button class="link dim" @click=${a.adminLock}>Выйти из режима организатора</button></div>`);
 }
 
 function confirmOverlay(app, a) {

@@ -19,6 +19,8 @@ export const app = {
   fatal: '',
   heroes: new Map(),
   winrates: null,
+  game: null,
+  adminPin: null,
   room: null,
   live: false,
   busy: false,
@@ -160,6 +162,43 @@ function askNick(nick, onYes) {
 
 export const actions = {
   setNick: v => { app.nick = v; },
+
+  joinGame() {
+    const nick = app.nick.trim();
+    if (!nick) { app.error = 'Сначала укажи ник.'; draw(); return; }
+    askNick(nick, () => {
+      store.set(NICK_KEY, nick);
+      run(async () => { app.game = await api.joinGame(nick); });
+    });
+  },
+  leaveGame() {
+    ask({
+      text: 'Выйти из стака на эту игру? Твоё место освободится.',
+      yesLabel: 'Выйти',
+      onYes: () => run(async () => { app.game = await api.leaveGame(); }),
+    });
+  },
+  openAdmin: () => { app.overlay = 'admin'; draw(); },
+  adminUnlock(pin) {
+    run(async () => { await api.adminCheck(pin); app.adminPin = pin; });
+  },
+  adminLock: () => { app.adminPin = null; app.overlay = null; draw(); },
+  adminSave(date, time) {
+    if (!date) { app.error = 'Укажи дату игры.'; draw(); return; }
+    run(async () => { app.game = await api.adminSetGame(app.adminPin, date, time); app.overlay = null; });
+  },
+  adminClearList() {
+    ask({ text: 'Очистить список игроков? Дата останется.', yesLabel: 'Очистить',
+      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, true); }) });
+  },
+  adminRemoveGame() {
+    ask({ text: 'Снять игру с главной? Список игроков тоже удалится.', yesLabel: 'Снять игру',
+      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, false); app.overlay = null; }) });
+  },
+  adminRemovePlayer(nick) {
+    ask({ text: `Убрать ${nick} из списка?`, yesLabel: 'Убрать',
+      onYes: () => run(async () => { app.game = await api.adminRemoveSignup(app.adminPin, nick); }) });
+  },
   setCode: v => { app.codeInput = v.toUpperCase(); },
 
   create() {
@@ -285,6 +324,11 @@ function tick() {
   api.roomAction(r.code, 'timeout', { idx }).then(applyState).catch(e => { if (!api.isSilent(e)) console.warn(e); });
 }
 
+async function refreshGame() {
+  try { app.game = await api.getNextGame(); draw(); }
+  catch (e) { console.warn(e); }
+}
+
 async function boot() {
   document.getElementById('app').replaceChildren();
   try {
@@ -294,6 +338,7 @@ async function boot() {
       .then(d => { app.winrates = new Map(Object.entries(d.winrates).map(([id, wr]) => [Number(id), wr])); draw(); })
       .catch(console.warn);
     app.uid = await api.signIn();
+    refreshGame();
     const code = app.codeInput || store.get(ROOM_KEY);
     if (code) {
       try {
@@ -318,4 +363,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && (app.overlay || app.confirm)) { app.overlay = null; app.confirm = null; draw(); }
 });
 setInterval(tick, 250);
+// Список на игру виден только на главной: обновляем его, пока она открыта.
+setInterval(() => { if (app.uid && !app.room && !document.hidden) refreshGame(); }, 10000);
 boot();

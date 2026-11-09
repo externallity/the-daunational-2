@@ -478,6 +478,149 @@ exception when duplicate_object then null;
 end $$;
 
 -- ============================================================
+-- Ближайшая игра и запись в стак (главная страница)
+-- ============================================================
+
+create table if not exists public.next_game (
+  id integer primary key default 1 check (id = 1),
+  play_date date not null,
+  play_time time,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.game_signups (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  nick text not null check (length(btrim(nick)) between 1 and 24),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists game_signups_nick_key on public.game_signups (lower(nick));
+
+-- PIN организатора. Значение задаётся отдельно и в репозиторий не попадает.
+create table if not exists public.admin_secret (
+  id integer primary key default 1 check (id = 1),
+  salt text not null,
+  pin_hash text not null
+);
+
+alter table public.next_game enable row level security;
+alter table public.game_signups enable row level security;
+alter table public.admin_secret enable row level security;
+revoke all on public.next_game, public.game_signups, public.admin_secret from anon, authenticated;
+
+create or replace function public._check_pin(p_pin text)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if not exists (
+    select 1 from public.admin_secret
+    where pin_hash = encode(sha256(convert_to(salt || coalesce(p_pin, ''), 'UTF8')), 'hex')
+  ) then
+    raise exception 'BAD_PIN';
+  end if;
+end;
+$$;
+
+create or replace function public.get_next_game()
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
+  return jsonb_build_object(
+    'limit', 10,
+    'game', (select jsonb_build_object('date', play_date, 'time', to_char(play_time, 'HH24:MI')) from public.next_game),
+    'players', coalesce((
+      select jsonb_agg(jsonb_build_object('nick', nick, 'mine', user_id = v_uid) order by created_at)
+      from public.game_signups), '[]'::jsonb));
+end;
+$$;
+
+create or replace function public.join_game(p_nick text)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+  v_nick text := btrim(p_nick);
+begin
+  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
+  if length(v_nick) not between 1 and 24 then raise exception 'BAD_NICK'; end if;
+  -- Блокировка строки игры: одновременные записи не превысят лимит.
+  perform 1 from public.next_game for update;
+  if not found then raise exception 'NO_GAME'; end if;
+  if exists (select 1 from public.game_signups where user_id = v_uid) then raise exception 'ALREADY_IN'; end if;
+  if (select count(*) from public.game_signups) >= 10 then raise exception 'GAME_FULL'; end if;
+  if exists (select 1 from public.game_signups where lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
+  insert into public.game_signups(user_id, nick) values (v_uid, v_nick);
+  return public.get_next_game();
+end;
+$$;
+
+create or replace function public.leave_game()
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  delete from public.game_signups where user_id = auth.uid();
+  return public.get_next_game();
+end;
+$$;
+
+create or replace function public.admin_check(p_pin text)
+returns boolean language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  return true;
+end;
+$$;
+
+create or replace function public.admin_set_game(p_pin text, p_date date, p_time time default null)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  if p_date is null then raise exception 'BAD_DATE'; end if;
+  insert into public.next_game(id, play_date, play_time) values (1, p_date, p_time)
+  on conflict (id) do update set play_date = excluded.play_date, play_time = excluded.play_time, updated_at = now();
+  return public.get_next_game();
+end;
+$$;
+
+-- p_keep_game = true только очищает список, false снимает игру целиком.
+create or replace function public.admin_clear_game(p_pin text, p_keep_game boolean)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  delete from public.game_signups where true;
+  if not p_keep_game then delete from public.next_game where true; end if;
+  return public.get_next_game();
+end;
+$$;
+
+create or replace function public.admin_remove_signup(p_pin text, p_nick text)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  delete from public.game_signups where lower(nick) = lower(btrim(p_nick));
+  return public.get_next_game();
+end;
+$$;
+
+revoke all on function public._check_pin(text) from public, anon, authenticated;
+revoke all on function public.get_next_game() from public, anon;
+revoke all on function public.join_game(text) from public, anon;
+revoke all on function public.leave_game() from public, anon;
+revoke all on function public.admin_check(text) from public, anon;
+revoke all on function public.admin_set_game(text, date, time) from public, anon;
+revoke all on function public.admin_clear_game(text, boolean) from public, anon;
+revoke all on function public.admin_remove_signup(text, text) from public, anon;
+grant execute on function public.get_next_game() to authenticated;
+grant execute on function public.join_game(text) to authenticated;
+grant execute on function public.leave_game() to authenticated;
+grant execute on function public.admin_check(text) to authenticated;
+grant execute on function public.admin_set_game(text, date, time) to authenticated;
+grant execute on function public.admin_clear_game(text, boolean) to authenticated;
+grant execute on function public.admin_remove_signup(text, text) to authenticated;
+
+-- ============================================================
 -- Каталог героев (сгенерирован из heroes.json)
 -- ============================================================
 

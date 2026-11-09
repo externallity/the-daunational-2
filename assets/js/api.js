@@ -13,6 +13,11 @@ const ERRORS = {
   NICK_TAKEN: 'Этот ник уже занят в комнате.',
   NO_SEAT: 'Игрока с таким ником в комнате нет.',
   BAD_MVP: 'MVP выбирается из проигравшей команды.',
+  BAD_PIN: 'Неверный PIN организатора.',
+  GAME_FULL: 'Стак уже собран: все 10 мест заняты.',
+  ALREADY_IN: 'Ты уже в списке на эту игру.',
+  NO_GAME: 'Дата игры пока не назначена.',
+  BAD_DATE: 'Укажи дату игры.',
   BAD_NICK: 'Ник должен быть от 1 до 24 символов.',
   ALREADY_STARTED: 'Игра в этой комнате уже началась.',
   NOT_MEMBER: 'Ты не участник этой комнаты.',
@@ -57,6 +62,14 @@ export const reclaimSeat = (code, nick) => rpc('reclaim_seat', { p_code: code, p
 export const getRoom = code => rpc('get_room', { p_code: code });
 export const roomAction = (code, action, args = {}) => rpc('room_action', { p_code: code, p_action: action, p_args: args });
 export const finishRoom = (code, winner, mvp) => rpc('finish_room', { p_code: code, p_winner: winner, p_mvp: mvp });
+
+export const getNextGame = () => rpc('get_next_game', {});
+export const joinGame = nick => rpc('join_game', { p_nick: nick });
+export const leaveGame = () => rpc('leave_game', {});
+export const adminCheck = pin => rpc('admin_check', { p_pin: pin });
+export const adminSetGame = (pin, date, time) => rpc('admin_set_game', { p_pin: pin, p_date: date, p_time: time || null });
+export const adminClearGame = (pin, keepGame) => rpc('admin_clear_game', { p_pin: pin, p_keep_game: keepGame });
+export const adminRemoveSignup = (pin, nick) => rpc('admin_remove_signup', { p_pin: pin, p_nick: nick });
 
 export async function getScores() {
   const { data, error } = await db.from('tournament_scores')
