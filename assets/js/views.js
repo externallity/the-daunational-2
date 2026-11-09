@@ -52,7 +52,7 @@ function homeView(app, a) {
   const submit = e => { e.preventDefault(); e.submitter?.value === 'create' ? a.create() : a.join(); };
   return html`<section class="home">
     <div class="home-copy">
-      <p class="eyebrow">Закрытый турнир · Turbo · Captains Mode</p>
+      <p class="eyebrow">Закрытый турнир · Turbo · Captains Draft</p>
       <h1 class="title"><span>The</span> Daunational <b>2</b></h1>
       <p class="lead">Десять друзей, два капитана, монетка и 28 героев на доске. Всё остальное решается в игре.</p>
       <form class="entry" @submit=${submit}>
@@ -341,12 +341,14 @@ function overlay(a, title, body) {
 
 function rulesOverlay(a) {
   return overlay(a, 'Формат', html`<dl class="rules">
-    <dt>Режим</dt><dd>Turbo. Герои определяются драфтом Captains Mode на этом сайте.</dd>
+    <dt>Режим</dt><dd>Turbo. Герои определяются драфтом Captains Draft на этом сайте.</dd>
     <dt>Порядок</dt><dd>Лобби, капитаны, набор составов, монетка, драфт.</dd>
     <dt>Пул</dt><dd>Случайные 28 героев: по 7 силы, ловкости, интеллекта и универсальных.</dd>
-    <dt>Драфт</dt><dd>У каждой команды 7 банов и 5 пиков. Начинает победитель монетки.</dd>
-    <dt>Время</dt><dd>30 секунд на ход и 130 секунд резерва на команду. Если время вышло, бан пропадает, а пик выбирается случайно.</dd>
+    <dt>Драфт</dt><dd>У каждой команды 3 бана и 5 пиков. Начинает победитель монетки.</dd>
+    <dt>Время</dt><dd>30 секунд на ход и 210 секунд резерва на команду. Если время вышло, бан пропадает, а пик выбирается случайно.</dd>
     <dt>Очки</dt><dd>Победа +100, поражение +40, MVP ещё +15. Очки суммируются между играми.</dd>
+    <dt>Ник</dt><dd>Один на весь турнир: очки записываются на него. Под другим ником очки не сложатся.</dd>
+    <dt>Возврат</dt><dd>Вылетел или сменил устройство — введи свой ник и код комнаты и подтверди, что это ты.</dd>
   </dl>`);
 }
 
@@ -363,9 +365,11 @@ function scoresOverlay(app, a) {
 
 function confirmOverlay(app, a) {
   return html`<div class="overlay"><div class="dialog small" role="alertdialog" aria-modal="true">
+    ${app.confirm.title ? html`<h2 class="confirm-title">${app.confirm.title}</h2>` : nothing}
+    ${app.confirm.highlight ? html`<p class="confirm-nick">${app.confirm.highlight}</p>` : nothing}
     <p class="confirm-text">${app.confirm.text}</p>
     <div class="controls end">
-      <button class="btn ghost" @click=${a.confirmNo}>Отмена</button>
+      <button class="btn ghost" @click=${a.confirmNo}>${app.confirm.noLabel || 'Отмена'}</button>
       <button class="btn primary" @click=${a.confirmYes}>${app.confirm.yesLabel}</button>
     </div>
   </div></div>`;

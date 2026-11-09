@@ -60,6 +60,14 @@ function applyState(next) {
   const prev = app.room;
   if (prev && next.rev < prev.rev) return;
 
+  // Игрока убрал организатор, либо он вернулся на своё место с другого устройства.
+  if (prev && !next.players.some(p => p.id === app.uid)) {
+    leaveRoomLocal();
+    app.error = 'Ты больше не в этой комнате. Вернуться можно по своему нику и коду.';
+    draw();
+    return;
+  }
+
   if (prev && !prev.coin && next.coin) {
     app.coinSpinning = true;
     setTimeout(() => { app.coinSpinning = false; draw(); }, 1900);
@@ -132,9 +140,21 @@ function randomCode() {
   return Array.from(bytes, b => CODE_CHARS[b % CODE_CHARS.length]).join('');
 }
 
-function ask(text, yesLabel, onYes) {
-  app.confirm = { text, yesLabel, onYes };
+function ask(options) {
+  app.confirm = options;
   draw();
+}
+
+// Ник закрепляется за игроком на весь турнир, поэтому вход всегда подтверждается.
+function askNick(nick, onYes) {
+  ask({
+    title: 'Твой ник на весь турнир',
+    highlight: nick,
+    text: 'Все очки записываются на этот ник. Если потом зайдёшь под другим, очки не сложатся: это будет уже другой игрок. Проверь написание.',
+    noLabel: 'Изменить ник',
+    yesLabel: 'Играю под этим ником',
+    onYes,
+  });
 }
 
 export const actions = {
@@ -144,20 +164,51 @@ export const actions = {
   create() {
     const nick = app.nick.trim();
     if (!nick) { app.error = 'Сначала укажи ник.'; draw(); return; }
-    store.set(NICK_KEY, nick);
-    run(async () => enterRoom(await api.createRoom(randomCode(), nick)));
+    askNick(nick, () => {
+      store.set(NICK_KEY, nick);
+      run(async () => enterRoom(await api.createRoom(randomCode(), nick)));
+    });
   },
   join() {
     const nick = app.nick.trim(), code = app.codeInput.trim();
     if (!nick || !code) { app.error = 'Нужны ник и код комнаты.'; draw(); return; }
-    store.set(NICK_KEY, nick);
-    run(async () => enterRoom(await api.joinRoom(code, nick)));
+    run(async () => {
+      const state = await api.getRoom(code);
+      if (state.players.some(p => p.id === app.uid)) { enterRoom(state); return; }
+
+      const key = nick.toLowerCase();
+      const seat = state.players.find(p => !p.bot && p.nick.toLowerCase() === key);
+      if (seat) {
+        ask({
+          title: 'Это ты?',
+          highlight: seat.nick,
+          text: 'Игрок с таким ником уже в комнате. Если это ты, вернёшься на своё место с той же ролью, а на старом устройстве тебя отключит.',
+          noLabel: 'Нет, другой ник',
+          yesLabel: 'Да, это я',
+          onYes: () => {
+            store.set(NICK_KEY, seat.nick);
+            run(async () => enterRoom(await api.reclaimSeat(code, seat.nick)));
+          },
+        });
+        return;
+      }
+
+      if (state.stage !== 'lobby') { enterRoom(await api.joinRoom(code, nick)); return; }
+      askNick(nick, () => {
+        store.set(NICK_KEY, nick);
+        run(async () => enterRoom(await api.joinRoom(code, nick)));
+      });
+    });
   },
   exit() {
     const canLeave = app.room.stage === 'lobby' && !isHost();
-    ask(canLeave ? 'Выйти из комнаты? Твоё место освободится.' : 'Выйти на главную? Вернуться можно по коду комнаты.', 'Выйти', () => {
-      if (canLeave) api.roomAction(app.room.code, 'leave').catch(console.warn).finally(leaveRoomLocal);
-      else leaveRoomLocal();
+    ask({
+      text: canLeave ? 'Выйти из комнаты? Твоё место освободится.' : 'Выйти на главную? Вернуться можно по своему нику и коду комнаты.',
+      yesLabel: 'Выйти',
+      onYes: () => {
+        if (canLeave) api.roomAction(app.room.code, 'leave').catch(console.warn).finally(leaveRoomLocal);
+        else leaveRoomLocal();
+      },
     });
   },
   async copyLink() {
@@ -173,7 +224,7 @@ export const actions = {
   kick: id => act('kick', { id }),
   toCaptains: () => act('to_captains'),
   restart() {
-    ask('Вернуть всех в лобби? Текущий прогресс игры будет сброшен.', 'Сбросить', () => act('restart'));
+    ask({ text: 'Вернуть всех в лобби? Текущий прогресс игры будет сброшен.', yesLabel: 'Сбросить', onYes: () => act('restart') });
   },
   nextGame: () => act('restart'),
 

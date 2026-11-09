@@ -10,7 +10,8 @@ const ERRORS = {
   ROOM_NOT_FOUND: 'Комната с таким кодом не найдена.',
   ROOM_OUTDATED: 'Это комната старого формата. Создай новую.',
   ROOM_FULL: 'В комнате уже 10 игроков.',
-  NICK_TAKEN: 'Этот ник уже занят в комнате. Если это ты с другого устройства, попроси организатора убрать старую запись.',
+  NICK_TAKEN: 'Этот ник уже занят в комнате.',
+  NO_SEAT: 'Игрока с таким ником в комнате нет.',
   BAD_NICK: 'Ник должен быть от 1 до 24 символов.',
   ALREADY_STARTED: 'Игра в этой комнате уже началась.',
   NOT_MEMBER: 'Ты не участник этой комнаты.',
@@ -51,6 +52,7 @@ async function rpc(fn, args) {
 
 export const createRoom = (code, nick) => rpc('create_room', { p_code: code, p_host_nickname: nick });
 export const joinRoom = (code, nick) => rpc('join_room', { p_code: code, p_nickname: nick });
+export const reclaimSeat = (code, nick) => rpc('reclaim_seat', { p_code: code, p_nickname: nick });
 export const getRoom = code => rpc('get_room', { p_code: code });
 export const roomAction = (code, action, args = {}) => rpc('room_action', { p_code: code, p_action: action, p_args: args });
 export const finishRoom = (code, winner, mvp) => rpc('finish_room', { p_code: code, p_winner: winner, p_mvp: mvp });

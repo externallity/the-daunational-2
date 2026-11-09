@@ -62,7 +62,7 @@ drop function if exists public.update_room_state(text, jsonb);
 -- Внутренние функции
 -- ============================================================
 
--- Порядок Captains Mode: 14 банов и 10 пиков. F — кто выиграл монетку, S — второй.
+-- Порядок Captains Draft: 6 банов и 10 пиков. F — кто выиграл монетку, S — второй.
 -- Менять порядок драфта нужно только здесь.
 create or replace function public._cm_order(p_first integer)
 returns jsonb language sql immutable set search_path = public, pg_temp as $$
@@ -70,12 +70,9 @@ returns jsonb language sql immutable set search_path = public, pg_temp as $$
            't', case when step->>0 = 'F' then p_first else 1 - p_first end,
            'a', step->>1) order by ord)
   from jsonb_array_elements('[
-    ["F","ban"],["F","ban"],["S","ban"],["S","ban"],["F","ban"],["S","ban"],["S","ban"],
-    ["F","pick"],["S","pick"],
-    ["F","ban"],["F","ban"],["S","ban"],
-    ["S","pick"],["F","pick"],["F","pick"],["S","pick"],["S","pick"],["F","pick"],
-    ["F","ban"],["S","ban"],["F","ban"],["S","ban"],
-    ["F","pick"],["S","pick"]
+    ["F","ban"],["S","ban"],["F","ban"],["S","ban"],["F","ban"],["S","ban"],
+    ["F","pick"],["S","pick"],["S","pick"],["F","pick"],["F","pick"],
+    ["S","pick"],["S","pick"],["F","pick"],["F","pick"],["S","pick"]
   ]'::jsonb) with ordinality as t(step, ord);
 $$;
 
@@ -193,6 +190,44 @@ begin
   select state into s from public.rooms where code = upper(btrim(p_code));
   if not found then raise exception 'ROOM_NOT_FOUND'; end if;
   if coalesce((s->>'v')::int, 0) <> 2 then raise exception 'ROOM_OUTDATED'; end if;
+  return s || jsonb_build_object('serverNow', now());
+end;
+$$;
+
+-- Возврат на своё место с другого устройства: игрок подтвердил на сайте, что это его ник.
+-- Идентификаторы живых игроков — UUID, поэтому замена по всему состоянию безопасна
+-- и сразу переносит роли: капитана, организатора, место в составе, MVP.
+create or replace function public.reclaim_seat(p_code text, p_nickname text)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+  v_old text;
+  v_room public.rooms;
+  s jsonb;
+begin
+  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
+  select * into v_room from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'ROOM_NOT_FOUND'; end if;
+  s := v_room.state;
+  if coalesce((s->>'v')::int, 0) <> 2 then raise exception 'ROOM_OUTDATED'; end if;
+
+  if s->'players' @> jsonb_build_array(jsonb_build_object('id', v_uid::text)) then
+    return s || jsonb_build_object('serverNow', now());
+  end if;
+
+  select p->>'id' into v_old
+  from jsonb_array_elements(s->'players') p
+  where lower(p->>'nick') = lower(btrim(p_nickname)) and not coalesce((p->>'bot')::boolean, false)
+  limit 1;
+  if v_old is null then raise exception 'NO_SEAT'; end if;
+
+  s := replace(s::text, v_old, v_uid::text)::jsonb;
+  s := jsonb_set(s, '{rev}', to_jsonb((s->>'rev')::int + 1));
+  update public.rooms
+     set state = s,
+         updated_at = now(),
+         host_user_id = case when host_user_id::text = v_old then v_uid else host_user_id end
+   where code = v_room.code;
   return s || jsonb_build_object('serverNow', now());
 end;
 $$;
@@ -315,7 +350,7 @@ begin
         'pool', public._hero_pool(),
         'order', public._cm_order((s->'coin'->>'winner')::int),
         'actions', '[]'::jsonb, 'idx', 0,
-        'turnSeconds', 30, 'reserve', jsonb_build_array(130, 130),
+        'turnSeconds', 30, 'reserve', jsonb_build_array(210, 210),
         'turnStartedAt', now()));
 
   when 'draft', 'timeout' then
@@ -424,12 +459,14 @@ revoke all on function public._draft_advance(jsonb, integer, text, jsonb) from p
 revoke all on function public.create_room(text, text) from public, anon;
 revoke all on function public.join_room(text, text) from public, anon;
 revoke all on function public.get_room(text) from public, anon;
+revoke all on function public.reclaim_seat(text, text) from public, anon;
 revoke all on function public.room_action(text, text, jsonb) from public, anon;
 revoke all on function public.finish_room(text, integer, text) from public, anon;
 
 grant execute on function public.create_room(text, text) to authenticated;
 grant execute on function public.join_room(text, text) to authenticated;
 grant execute on function public.get_room(text) to authenticated;
+grant execute on function public.reclaim_seat(text, text) to authenticated;
 grant execute on function public.room_action(text, text, jsonb) to authenticated;
 grant execute on function public.finish_room(text, integer, text) to authenticated;
 
