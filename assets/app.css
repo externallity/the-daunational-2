@@ -320,10 +320,19 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 .prizes h3 { font-size: 24px; margin-bottom: 8px; }
 .dialog-head + .prizes { margin-top: 0; }
 .prizes ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.prize { padding: 10px 12px; background: var(--panel-2); border-top: 3px solid var(--medal); border-radius: 3px; }
-.prize strong { display: block; font: 900 30px/1 var(--display); color: var(--medal); text-transform: uppercase; }
-.prize span { display: block; margin-top: 4px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.prize span.tbd { color: var(--dim); font-weight: 400; }
+.prize {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 10px 12px; text-align: center;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--medal) 14%, var(--panel-2)), var(--panel-2) 62%);
+  border-top: 3px solid var(--medal); border-radius: 3px;
+}
+.prize-icon { width: 76px; height: 76px; object-fit: cover; border-radius: 12px; background: #0f1219; box-shadow: 0 0 0 1px color-mix(in srgb, var(--medal) 55%, transparent), 0 6px 20px rgb(0 0 0 / .45); }
+.prize-text { min-width: 0; }
+.prize strong { display: block; font: 900 26px/1 var(--display); color: var(--medal); text-transform: uppercase; }
+.prize-title { display: block; margin-top: 5px; font-size: 15px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.prize-note { display: block; margin-top: 2px; font-size: 13px; color: var(--dim); }
+.row-name { display: inline-flex; align-items: center; gap: 8px; }
+.prize-mini { width: 22px; height: 22px; flex: none; object-fit: cover; border-radius: 5px; }
+.scores tr.vacant .prize-mini { opacity: .75; }
 .table-wrap { overflow-x: auto; }
 .scores td:first-child { font-weight: 700; color: var(--dim); }
 .scores tr[class^='place-'] td:first-child { color: var(--medal); font: 900 22px/1 var(--display); }
@@ -356,8 +365,15 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 /* ---- Телефон ---- */
 @media (max-width: 680px) {
   .brand { font-size: 21px; }
-  .prize { padding: 8px 9px; }
-  .prize strong { font-size: 22px; white-space: nowrap; }
+  .prizes ol { grid-template-columns: 1fr; gap: 6px; }
+  .prize { flex-direction: row; gap: 12px; padding: 8px 10px; text-align: left; border-top: 0; border-left: 3px solid var(--medal); background: linear-gradient(90deg, color-mix(in srgb, var(--medal) 14%, var(--panel-2)), var(--panel-2) 62%); }
+  .prize-icon { width: 54px; height: 54px; border-radius: 9px; }
+  .prize strong { font-size: 20px; }
+  .prize-title { margin-top: 2px; }
+  .prize-mini { display: none; }
+  .scores th, .scores td { padding-right: 7px; }
+  .scores th { letter-spacing: 0; font-size: 11px; }
+  .scores .n { overflow-wrap: break-word; }
   .entry { grid-template-columns: 1fr 1fr; }
   .entry .btn { grid-column: 1 / -1; }
   .slots { grid-template-columns: 1fr; }

@@ -4,11 +4,11 @@ import { isHost, draftClock } from './main.js';
 const ATTRS = [['str', 'Сила'], ['agi', 'Ловкость'], ['int', 'Интеллект'], ['all', 'Универсальные']];
 const STAGES = [['lobby', 'Лобби'], ['captains', 'Капитаны'], ['squads', 'Составы'], ['coin', 'Монетка'], ['draft', 'Драфт'], ['result', 'Итог']];
 
-// Призы за места. Когда станут известны, вместо null впиши текст приза.
+// Призы за места. Картинки лежат в assets/prizes.
 const PRIZES = [
-  { place: 1, prize: null },
-  { place: 2, prize: null },
-  { place: 3, prize: null },
+  { place: 1, title: '500 ₽', note: 'на Steam', icon: 'assets/prizes/steam-gift.svg' },
+  { place: 2, title: 'Discord Nitro', icon: 'assets/prizes/discord-nitro.svg' },
+  { place: 3, title: 'Wyrmwrought Flare', note: 'Предмет на Lina', icon: 'assets/prizes/lina-wyrmwrought-flare.png' },
 ];
 
 const nick = (r, id) => r.players.find(p => p.id === id)?.nick ?? '—';
@@ -367,10 +367,19 @@ function prizesBlock() {
   return html`<section class="prizes">
     <h3>Призы</h3>
     <ol>${PRIZES.map(p => html`<li class=${'prize place-' + p.place}>
-      <strong>${p.place} место</strong>
-      <span class=${p.prize ? '' : 'tbd'}>${p.prize || 'Объявим позже'}</span>
+      <img class="prize-icon" src=${p.icon} alt="">
+      <div class="prize-text">
+        <strong>${p.place} место</strong>
+        <span class="prize-title">${p.title}</span>
+        ${p.note ? html`<span class="prize-note">${p.note}</span>` : nothing}
+      </div>
     </li>`)}</ol>
   </section>`;
+}
+
+function rowName(i, name) {
+  const p = PRIZES[i];
+  return html`<span class="row-name">${name}${p ? html`<img class="prize-mini" src=${p.icon} alt=${'Приз: ' + p.title} title=${p.title}>` : nothing}</span>`;
 }
 
 function scoresOverlay(app, a) {
@@ -380,8 +389,8 @@ function scoresOverlay(app, a) {
   const table = html`<div class="table-wrap"><table class="scores">
       <thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Игры</th><th>Победы</th><th>MVP</th></tr></thead>
       <tbody>
-        ${rows.map((p, i) => html`<tr class=${placeClass(i)}><td>${i + 1}</td><td class="n">${p.nickname}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}
-        ${vacant.map(n => html`<tr class=${placeClass(n - 1) + ' vacant'}><td>${n}</td><td class="n">Место свободно</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`)}
+        ${rows.map((p, i) => html`<tr class=${placeClass(i)}><td>${i + 1}</td><td class="n">${rowName(i, p.nickname)}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}
+        ${vacant.map(n => html`<tr class=${placeClass(n - 1) + ' vacant'}><td>${n}</td><td class="n">${rowName(n - 1, 'Место свободно')}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`)}
       </tbody>
     </table></div>`;
   const note = app.scoresError ? app.scoresError
