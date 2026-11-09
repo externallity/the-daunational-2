@@ -172,7 +172,7 @@ function roomView(app, a) {
 function lobbyView(app, a) {
   const r = app.room, host = isHost(), n = r.players.length;
   const ready = n >= 2 && n % 2 === 0;
-  const onAdd = e => { e.preventDefault(); const f = e.target.elements.bot; a.addBot(f.value); f.value = ''; };
+  const onAdd = e => { e.preventDefault(); const f = e.target.elements.guest; a.addGuest(f.value); f.value = ''; };
   return html`<section class="stage">
     <div class="stage-head">
       <div>
@@ -185,7 +185,7 @@ function lobbyView(app, a) {
     <ul class="slots">
       ${r.players.map(p => html`<li class=${cls('slot', p.id === app.uid && 'mine')}>
         <span class="slot-name">${p.nick}</span>
-        ${p.id === r.hostId ? html`<em>Организатор</em>` : p.bot ? html`<em>Бот</em>` : nothing}
+        ${p.id === r.hostId ? html`<em>Организатор</em>` : p.bot ? html`<em>Бот</em>` : p.guest ? html`<em>Добавлен вручную</em>` : nothing}
         ${host && p.id !== r.hostId ? html`<button class="x" aria-label=${'Убрать ' + p.nick} @click=${() => a.kick(p.id)}>×</button>` : nothing}
       </li>`)}
       ${Array.from({ length: Math.max(0, 10 - n) }, () => html`<li class="slot empty">Свободно</li>`)}
@@ -194,8 +194,9 @@ function lobbyView(app, a) {
       <div class="controls">
         <button class="btn primary" ?disabled=${!ready || app.busy} @click=${a.toCaptains}>К выбору капитанов</button>
         ${n < 10 ? html`<button class="btn" ?disabled=${app.busy} @click=${a.fillBots}>Заполнить ботами</button>` : nothing}
-        <form class="inline" @submit=${onAdd}><input name="bot" maxlength="24" placeholder="Имя бота"><button class="btn">Добавить</button></form>
+        <form class="inline" @submit=${onAdd}><input name="guest" maxlength="24" placeholder="Ник игрока"><button class="btn" ?disabled=${app.busy}>Добавить игрока</button></form>
       </div>
+      <p class="hint">Добавленный вручную игрок получает очки как обычно, а ходы за него делаешь ты. Если он сможет зайти сам, то по своему нику и коду комнаты займёт это место.</p>
       ${!ready ? html`<p class="hint">Для старта нужно чётное число игроков.</p>` : nothing}
       ${r.players.some(p => p.bot) ? html`<p class="hint">Комната с ботами считается тестовой: очки в ней не начисляются.</p>` : nothing}
     ` : html`<p class="waiting">Ждём, пока организатор запустит игру.</p>`}
@@ -505,11 +506,23 @@ function scoresOverlay(app, a) {
   const rows = app.scores || [];
   const vacant = Array.from({ length: Math.max(0, PRIZES.length - rows.length) }, (_, i) => rows.length + i + 1);
   const placeClass = i => (i < PRIZES.length ? 'place-' + (i + 1) : '');
+  const edit = !!app.adminPin;
+  const field = (name, value) => html`<input class="score-input" name=${name} type="number" min="0" step="1" .value=${String(value)} aria-label=${name}>`;
+  const readRow = root => Object.fromEntries(['points', 'games', 'wins', 'mvp'].map(k => [k, Number(root.querySelector(`[name=${k}]`).value)]));
+  const editRow = (p, i) => html`<tr class=${placeClass(i)}>
+    <td>${i + 1}</td><td class="n">${p.nickname}</td>
+    <td>${field('points', p.total_points)}</td><td>${field('games', p.games_played)}</td><td>${field('wins', p.wins)}</td><td>${field('mvp', p.mvp_awards)}</td>
+    <td class="score-actions">
+      <button class="btn small" ?disabled=${app.busy} @click=${e => a.adminSaveScore(p.nickname, readRow(e.target.closest('tr')))}>Сохранить</button>
+      <button class="x" aria-label=${'Удалить ' + p.nickname} @click=${() => a.adminDeleteScore(p.nickname)}>×</button>
+    </td>
+  </tr>`;
+  const addRow = e => { e.preventDefault(); const f = e.target; const nick = f.elements.nick.value.trim(); if (!nick) return; a.adminSaveScore(nick, readRow(f)); f.reset(); };
   const table = html`<div class="table-wrap"><table class="scores">
-      <thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Игры</th><th>Победы</th><th>MVP</th></tr></thead>
+      <thead><tr><th>#</th><th>Игрок</th><th>Очки</th><th>Игры</th><th>Победы</th><th>MVP</th>${edit ? html`<th></th>` : nothing}</tr></thead>
       <tbody>
-        ${rows.map((p, i) => html`<tr class=${placeClass(i)}><td>${i + 1}</td><td class="n">${rowName(i, p.nickname)}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}
-        ${vacant.map(n => html`<tr class=${placeClass(n - 1) + ' vacant'}><td>${n}</td><td class="n">${rowName(n - 1, 'Место свободно')}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`)}
+        ${edit ? rows.map(editRow) : rows.map((p, i) => html`<tr class=${placeClass(i)}><td>${i + 1}</td><td class="n">${rowName(i, p.nickname)}</td><td class="pts">${p.total_points}</td><td>${p.games_played}</td><td>${p.wins}</td><td>${p.mvp_awards}</td></tr>`)}
+        ${vacant.map(n => html`<tr class=${placeClass(n - 1) + ' vacant'}><td>${n}</td><td class="n">${rowName(n - 1, 'Место свободно')}</td><td>—</td><td>—</td><td>—</td><td>—</td>${edit ? html`<td></td>` : nothing}</tr>`)}
       </tbody>
     </table></div>`;
   const note = app.scoresError ? app.scoresError
@@ -520,6 +533,16 @@ function scoresOverlay(app, a) {
     ${prizesBlock()}
     ${app.scoresError ? nothing : table}
     ${note ? html`<p class="hint">${note}</p>` : nothing}
+    ${edit && !app.scoresError ? html`<form class="score-add" @submit=${addRow}>
+      <input name="nick" maxlength="32" placeholder="Новый игрок" aria-label="Ник">
+      <input class="score-input" name="points" type="number" min="0" step="1" value="0" aria-label="Очки" title="Очки">
+      <input class="score-input" name="games" type="number" min="0" step="1" value="0" aria-label="Игры" title="Игры">
+      <input class="score-input" name="wins" type="number" min="0" step="1" value="0" aria-label="Победы" title="Победы">
+      <input class="score-input" name="mvp" type="number" min="0" step="1" value="0" aria-label="MVP" title="MVP">
+      <button class="btn small" ?disabled=${app.busy}>Добавить</button>
+    </form>
+    <p class="hint">Режим организатора: поменяй значения и нажми «Сохранить» в нужной строке.</p>`
+    : html`<div class="controls end"><button class="link dim game-admin" @click=${() => a.openAdmin('scores')}>Организатор</button></div>`}
   `);
 }
 
@@ -541,11 +564,18 @@ function adminOverlay(app, a) {
     <p class="hint">Если дата уже назначена, список игроков при её смене сохранится.</p>
     <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Сохранить</button></div>
   </form>
+  ${game ? html`<form class="inline admin-add" @submit=${e => { e.preventDefault(); const f = e.target.elements.signup; a.adminAddSignup(f.value); f.value = ''; }}>
+    <input name="signup" maxlength="24" placeholder="Ник игрока" aria-label="Ник игрока">
+    <button class="btn small" ?disabled=${app.busy}>Вписать в список</button>
+  </form>` : nothing}
   ${game ? html`<div class="controls">
     <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminClearList}>Очистить список</button>
     <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminRemoveGame}>Снять игру</button>
   </div>` : nothing}
-  <div class="controls end"><button class="link dim" @click=${a.adminLock}>Выйти из режима организатора</button></div>`);
+  <div class="controls" style="justify-content:space-between">
+    <button class="link strong" @click=${a.openScores}>Изменить очки в таблице</button>
+    <button class="link dim" @click=${a.adminLock}>Выйти из режима организатора</button>
+  </div>`);
 }
 
 function confirmOverlay(app, a) {

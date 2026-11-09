@@ -22,6 +22,7 @@ export const app = {
   reveal: null,
   game: null,
   adminPin: null,
+  adminReturn: null,
   room: null,
   live: false,
   busy: false,
@@ -196,9 +197,24 @@ export const actions = {
       onYes: () => run(async () => { app.game = await api.leaveGame(); }),
     });
   },
-  openAdmin: () => { app.overlay = 'admin'; draw(); },
+  openAdmin(ret) { app.adminReturn = ret === 'scores' ? 'scores' : null; app.overlay = 'admin'; draw(); },
   adminUnlock(pin) {
-    run(async () => { await api.adminCheck(pin); app.adminPin = pin; });
+    run(async () => {
+      await api.adminCheck(pin);
+      app.adminPin = pin;
+      if (app.adminReturn === 'scores') actions.openScores();
+    });
+  },
+  adminAddSignup(nick) {
+    if (!nick.trim()) return;
+    run(async () => { app.game = await api.adminAddSignup(app.adminPin, nick.trim()); });
+  },
+  adminSaveScore(nick, s) {
+    run(async () => { await api.adminSetScore(app.adminPin, nick, s); app.scores = await api.getScores(); });
+  },
+  adminDeleteScore(nick) {
+    ask({ text: `Удалить ${nick} из таблицы вместе с очками?`, yesLabel: 'Удалить',
+      onYes: () => run(async () => { await api.adminDeleteScore(app.adminPin, nick); app.scores = await api.getScores(); }) });
   },
   adminLock: () => { app.adminPin = null; app.overlay = null; draw(); },
   adminSave(date, time) {
@@ -277,7 +293,7 @@ export const actions = {
     setTimeout(() => { app.copied = false; draw(); }, 1600);
   },
 
-  addBot: nick => { if (nick.trim()) act('add_bot', { nick: nick.trim() }); },
+  addGuest: nick => { if (nick.trim()) act('add_guest', { nick: nick.trim() }); },
   fillBots: () => act('fill_bots'),
   kick: id => act('kick', { id }),
   toCaptains: () => act('to_captains'),

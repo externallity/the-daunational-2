@@ -222,6 +222,10 @@ begin
   if v_old is null then raise exception 'NO_SEAT'; end if;
 
   s := replace(s::text, v_old, v_uid::text)::jsonb;
+  -- Вписанный вручную игрок зашёл сам: убираем отметку.
+  s := jsonb_set(s, '{players}', (
+    select jsonb_agg(case when p->>'id' = v_uid::text then p - 'guest' else p end order by ord)
+    from jsonb_array_elements(s->'players') with ordinality as t(p, ord)));
   s := jsonb_set(s, '{rev}', to_jsonb((s->>'rev')::int + 1));
   update public.rooms
      set state = s,
@@ -282,6 +286,18 @@ begin
         s := jsonb_set(s, '{players}', (s->'players') || jsonb_build_array(jsonb_build_object('id', 'bot:' || gen_random_uuid(), 'nick', v_nick, 'bot', true)));
       end loop;
     end if;
+
+  when 'add_guest' then
+    -- Игрок без аккаунта: очки получает как обычно, ходит за него организатор.
+    if not v_host then raise exception 'FORBIDDEN'; end if;
+    if v_stage <> 'lobby' then raise exception 'WRONG_STAGE'; end if;
+    v_nick := btrim(coalesce(p_args->>'nick', ''));
+    if length(v_nick) not between 1 and 24 then raise exception 'BAD_NICK'; end if;
+    if v_count >= 10 then raise exception 'ROOM_FULL'; end if;
+    if exists (select 1 from jsonb_array_elements(s->'players') p where lower(p->>'nick') = lower(v_nick)) then
+      raise exception 'NICK_TAKEN';
+    end if;
+    s := jsonb_set(s, '{players}', (s->'players') || jsonb_build_array(jsonb_build_object('id', 'guest:' || gen_random_uuid(), 'nick', v_nick, 'bot', false, 'guest', true)));
 
   when 'kick', 'leave' then
     if v_stage <> 'lobby' then raise exception 'WRONG_STAGE'; end if;
@@ -495,6 +511,11 @@ create table if not exists public.game_signups (
 );
 create unique index if not exists game_signups_nick_key on public.game_signups (lower(nick));
 
+-- Запись без аккаунта: организатор вписывает игрока по нику (user_id пустой).
+alter table public.game_signups drop constraint if exists game_signups_pkey;
+alter table public.game_signups alter column user_id drop not null;
+create unique index if not exists game_signups_user_key on public.game_signups (user_id) where user_id is not null;
+
 -- PIN организатора. Значение задаётся отдельно и в репозиторий не попадает.
 create table if not exists public.admin_secret (
   id integer primary key default 1 check (id = 1),
@@ -528,7 +549,7 @@ begin
     'limit', 10,
     'game', (select jsonb_build_object('date', play_date, 'time', to_char(play_time, 'HH24:MI')) from public.next_game),
     'players', coalesce((
-      select jsonb_agg(jsonb_build_object('nick', nick, 'mine', user_id = v_uid) order by created_at)
+      select jsonb_agg(jsonb_build_object('nick', nick, 'mine', coalesce(user_id = v_uid, false)) order by created_at)
       from public.game_signups), '[]'::jsonb));
 end;
 $$;
@@ -545,6 +566,9 @@ begin
   perform 1 from public.next_game for update;
   if not found then raise exception 'NO_GAME'; end if;
   if exists (select 1 from public.game_signups where user_id = v_uid) then raise exception 'ALREADY_IN'; end if;
+  -- Если организатор уже вписал этот ник, игрок просто занимает своё место.
+  update public.game_signups set user_id = v_uid where lower(nick) = lower(v_nick) and user_id is null;
+  if found then return public.get_next_game(); end if;
   if (select count(*) from public.game_signups) >= 10 then raise exception 'GAME_FULL'; end if;
   if exists (select 1 from public.game_signups where lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
   insert into public.game_signups(user_id, nick) values (v_uid, v_nick);
@@ -604,7 +628,59 @@ begin
 end;
 $$;
 
+create or replace function public.admin_add_signup(p_pin text, p_nick text)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_nick text := btrim(p_nick);
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  if length(v_nick) not between 1 and 24 then raise exception 'BAD_NICK'; end if;
+  perform 1 from public.next_game for update;
+  if not found then raise exception 'NO_GAME'; end if;
+  if (select count(*) from public.game_signups) >= 10 then raise exception 'GAME_FULL'; end if;
+  if exists (select 1 from public.game_signups where lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
+  insert into public.game_signups(user_id, nick) values (null, v_nick);
+  return public.get_next_game();
+end;
+$$;
+
+-- Ручная правка турнирной таблицы организатором.
+create or replace function public.admin_set_score(p_pin text, p_nick text, p_points integer, p_wins integer, p_games integer, p_mvp integer)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_nick text := btrim(p_nick);
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  if length(v_nick) not between 1 and 32 then raise exception 'BAD_NICK'; end if;
+  if p_points is null or p_wins is null or p_games is null or p_mvp is null
+     or p_points < 0 or p_wins < 0 or p_games < 0 or p_mvp < 0 then raise exception 'BAD_SCORE'; end if;
+  update public.tournament_scores
+     set total_points = p_points, wins = p_wins, games_played = p_games, mvp_awards = p_mvp,
+         losses = greatest(p_games - p_wins, 0), updated_at = now()
+   where lower(nickname) = lower(v_nick);
+  if not found then
+    insert into public.tournament_scores(nickname, total_points, wins, games_played, mvp_awards, losses)
+    values (v_nick, p_points, p_wins, p_games, p_mvp, greatest(p_games - p_wins, 0));
+  end if;
+end;
+$$;
+
+create or replace function public.admin_delete_score(p_pin text, p_nick text)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  delete from public.tournament_scores where lower(nickname) = lower(btrim(p_nick));
+end;
+$$;
+
 revoke all on function public._check_pin(text) from public, anon, authenticated;
+revoke all on function public.admin_add_signup(text, text) from public, anon;
+revoke all on function public.admin_set_score(text, text, integer, integer, integer, integer) from public, anon;
+revoke all on function public.admin_delete_score(text, text) from public, anon;
+grant execute on function public.admin_add_signup(text, text) to authenticated;
+grant execute on function public.admin_set_score(text, text, integer, integer, integer, integer) to authenticated;
+grant execute on function public.admin_delete_score(text, text) to authenticated;
 revoke all on function public.get_next_game() from public, anon;
 revoke all on function public.join_game(text) from public, anon;
 revoke all on function public.leave_game() from public, anon;

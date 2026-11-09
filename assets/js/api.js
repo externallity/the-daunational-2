@@ -18,6 +18,7 @@ const ERRORS = {
   ALREADY_IN: 'Ты уже в списке на эту игру.',
   NO_GAME: 'Дата игры пока не назначена.',
   BAD_DATE: 'Укажи дату игры.',
+  BAD_SCORE: 'Значения должны быть целыми и не меньше нуля.',
   BAD_NICK: 'Ник должен быть от 1 до 24 символов.',
   ALREADY_STARTED: 'Игра в этой комнате уже началась.',
   NOT_MEMBER: 'Ты не участник этой комнаты.',
@@ -70,6 +71,9 @@ export const adminCheck = pin => rpc('admin_check', { p_pin: pin });
 export const adminSetGame = (pin, date, time) => rpc('admin_set_game', { p_pin: pin, p_date: date, p_time: time || null });
 export const adminClearGame = (pin, keepGame) => rpc('admin_clear_game', { p_pin: pin, p_keep_game: keepGame });
 export const adminRemoveSignup = (pin, nick) => rpc('admin_remove_signup', { p_pin: pin, p_nick: nick });
+export const adminAddSignup = (pin, nick) => rpc('admin_add_signup', { p_pin: pin, p_nick: nick });
+export const adminSetScore = (pin, nick, s) => rpc('admin_set_score', { p_pin: pin, p_nick: nick, p_points: s.points, p_wins: s.wins, p_games: s.games, p_mvp: s.mvp });
+export const adminDeleteScore = (pin, nick) => rpc('admin_delete_score', { p_pin: pin, p_nick: nick });
 
 export async function getScores() {
   const { data, error } = await db.from('tournament_scores')

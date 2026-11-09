@@ -437,6 +437,13 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 .row-name { display: inline-flex; align-items: center; gap: 8px; }
 .prize-mini { width: 22px; height: 22px; flex: none; object-fit: cover; border-radius: 5px; }
 .scores tr.vacant .prize-mini { opacity: .75; }
+.score-input { width: 66px; padding: 6px 8px; }
+.score-actions { white-space: nowrap; }
+.score-actions .x { margin-left: 6px; }
+.score-add { display: flex; gap: 6px; margin-top: 12px; }
+.score-add input[name='nick'] { flex: 1; min-width: 0; padding: 6px 8px; }
+.admin-add { margin-top: 16px; }
+.admin-add input { flex: 1; width: auto; }
 .table-wrap { overflow-x: auto; }
 .scores td:first-child { font-weight: 700; color: var(--dim); }
 .scores tr[class^='place-'] td:first-child { color: var(--medal); font: 900 22px/1 var(--display); }
