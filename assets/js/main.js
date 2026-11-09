@@ -387,6 +387,7 @@ async function boot() {
     fetch('assets/data/hero-winrates.json').then(r => r.json())
       .then(d => { app.winrates = new Map(Object.entries(d.winrates).map(([id, wr]) => [Number(id), wr])); draw(); })
       .catch(console.warn);
+    api.setUserListener(id => { app.uid = id; });
     app.uid = await api.signIn();
     refreshGame();
     const code = app.codeInput || store.get(ROOM_KEY);

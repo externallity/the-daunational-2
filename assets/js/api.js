@@ -3,7 +3,24 @@
 const SUPABASE_URL = 'https://wyjllrldtgclhkdwwhqu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_4bDnw5Ikz8Xi5r-6EFiLKQ_OCaFRi4M';
 
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// На некоторых телефонах библиотека не находит сессию в момент запроса и молча шлёт его
+// как анонимный. Поэтому ключ входа хранится здесь и подставляется в такие запросы.
+let accessToken = null;
+let onUserChange = () => {};
+export const setUserListener = fn => { onUserChange = fn; };
+
+function authFetch(input, init = {}) {
+  const url = typeof input === 'string' ? input : input.url;
+  const headers = new Headers(init.headers);
+  if (accessToken && url.includes('/rest/v1/') && !headers.get('Authorization')?.startsWith('Bearer eyJ')) {
+    headers.set('Authorization', 'Bearer ' + accessToken);
+    return fetch(input, { ...init, headers });
+  }
+  return fetch(input, init);
+}
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: authFetch } });
+db.auth.onAuthStateChange((_event, session) => { if (session) accessToken = session.access_token; });
 
 const ERRORS = {
   AUTH_REQUIRED: 'Нет сессии. Обнови страницу.',
@@ -36,6 +53,7 @@ export function errorText(e) {
   const code = Object.keys(ERRORS).find(k => msg.includes(k));
   if (code) return ERRORS[code];
   if (/Could not find|schema cache/i.test(msg)) return 'База ещё не обновлена: выполни supabase/schema.sql в Supabase.';
+  if (/permission denied/i.test(msg)) return 'Не удалось подтвердить вход. Обнови страницу и попробуй ещё раз.';
   if (/fetch|network/i.test(msg)) return 'Нет связи с сервером. Проверь интернет.';
   return msg || 'Что-то пошло не так.';
 }
@@ -45,14 +63,26 @@ export const isSilent = e => /NOT_EXPIRED|STALE/.test(e?.message || '');
 export async function signIn() {
   const { data: { session }, error } = await db.auth.getSession();
   if (error) throw error;
-  if (session) return session.user.id;
+  if (session) { accessToken = session.access_token; return session.user.id; }
+  return newSession();
+}
+
+async function newSession() {
   const res = await db.auth.signInAnonymously();
   if (res.error) throw res.error;
+  accessToken = res.data.session.access_token;
+  onUserChange(res.data.user.id);
   return res.data.user.id;
 }
 
+const lostSession = error => error?.code === '42501' || /permission denied|JWT expired/i.test(error?.message || '');
+
 async function rpc(fn, args) {
-  const { data, error } = await db.rpc(fn, args);
+  let { data, error } = await db.rpc(fn, args);
+  if (lostSession(error)) {
+    await newSession();
+    ({ data, error } = await db.rpc(fn, args));
+  }
   if (error) throw error;
   return data;
 }
