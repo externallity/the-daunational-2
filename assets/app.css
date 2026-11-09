@@ -21,11 +21,12 @@ body {
   min-height: 100dvh;
   color: var(--text);
   font: 400 16px/1.45 var(--body);
+  /* Официальный арт Dota 2 (Valve), затемнён под текст, по краям виньетка. */
   background:
-    radial-gradient(60vw 50vh at 0% 0%, color-mix(in srgb, var(--team-a) 9%, transparent), transparent 70%),
-    radial-gradient(60vw 50vh at 100% 0%, color-mix(in srgb, var(--team-b) 9%, transparent), transparent 70%),
+    linear-gradient(90deg, rgb(6 7 10 / .92) 0%, rgb(6 7 10 / .78) 42%, rgb(6 7 10 / .55) 72%, rgb(6 7 10 / .66) 100%),
+    radial-gradient(ellipse 80% 80% at 50% 50%, transparent 45%, rgb(4 5 8 / .9) 100%),
+    url(bg.jpg) center / cover no-repeat fixed,
     var(--ink);
-  background-attachment: fixed;
 }
 h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
