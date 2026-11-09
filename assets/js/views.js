@@ -110,7 +110,7 @@ function gameCard(app, a) {
       <div>
         <p class="eyebrow">Ближайшая игра</p>
         ${when
-          ? html`<p class="game-date">${when.day}</p><p class="game-when">${when.weekday}${game.time ? `, ${game.time}` : ''}</p>`
+          ? html`<p class="game-date">${when.day}</p><p class="game-when">${when.weekday}${game.time ? `, ${game.time} UTC+3 (мск)` : ''}</p>`
           : html`<p class="game-date">Дата скоро</p><p class="game-when">Организатор объявит дату здесь</p>`}
       </div>
       ${game ? html`<span class=${cls('game-count', full && 'full')}>${players.length} / ${limit}</span>` : nothing}
@@ -518,7 +518,7 @@ function adminOverlay(app, a) {
   return overlay(a, 'Управление игрой', html`<form class="admin-form" @submit=${save}>
     <div class="admin-row">
       <label class="field"><span>Дата игры</span><input name="date" type="date" required .value=${game?.date || ''}></label>
-      <label class="field"><span>Время (необязательно)</span><input name="time" type="time" .value=${game?.time || ''}></label>
+      <label class="field"><span>Время UTC+3, мск (необязательно)</span><input name="time" type="time" .value=${game?.time || ''}></label>
     </div>
     <p class="hint">Если дата уже назначена, список игроков при её смене сохранится.</p>
     <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Сохранить</button></div>
