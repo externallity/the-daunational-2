@@ -1,15 +1,40 @@
 # THE DAUNATIONAL 2
 
-Initial frontend scaffold for the friends-only Dota 2 tournament.
+Закрытый сайт для турнира по Dota 2 среди друзей: Turbo, драфт Captains Mode, пул 7×4.
 
-## Current status
-- Responsive lobby, nickname entry, demo organizer controls, manual test-player creation, leaderboard and match-history placeholders.
-- Data currently lives in this browser only (localStorage); it is not shared between players/devices.
-- Admin detection by nickname containing `admin` is demo-only and is not secure authorization.
-- Match start currently previews random captains; snake draft, hero draft, match results/MVP and the full 15-match flow remain to be implemented.
+Адрес: https://the-daunational-2.pages.dev
 
-## Deployment
-Connect this repository's `main` branch to Cloudflare Pages. No build command is required; use `/` as the output directory.
+## Как устроено
 
-## Next step
-Configure Supabase and server-side authorization for shared tournament state before using this with the full group.
+Статический сайт без шага сборки на Cloudflare Pages (ветка `main`, output — корень репозитория) и Supabase как backend.
+
+| Путь | Назначение |
+|---|---|
+| `index.html` | Точка входа |
+| `assets/js/main.js` | Состояние, действия, синхронизация, таймер |
+| `assets/js/views.js` | Экраны (шаблоны lit-html) |
+| `assets/js/api.js` | Вызовы Supabase и тексты ошибок |
+| `assets/app.css` | Стили |
+| `assets/vendor/` | supabase-js 2.119.0 и lit-html 3.3.3 |
+| `heroes.json` | Каталог героев для интерфейса |
+| `supabase/schema.sql` | Таблицы, права, функции, каталог героев для сервера |
+
+## Ход игры
+
+Лобби → капитаны → составы (капитаны выбирают по очереди) → монетка → драфт → результат.
+
+Всё состояние комнаты лежит в `rooms.state` и меняется только через функции `create_room`, `join_room`, `room_action`, `finish_room`. Клиент не может записать состояние напрямую. Сервер сам проверяет очередь хода, бросает монетку, собирает пул и считает время.
+
+Драфт: случайный пул из 28 героев (по 7 каждого атрибута), 7 банов и 5 пиков у команды, 30 секунд на ход и 130 секунд резерва. Порядок задан в SQL-функции `_cm_order`. Если время вышло, бан пропадает, а пик выбирается случайно; завершить истёкший ход может браузер любого участника.
+
+Организатор может сходить за любого капитана, если тот отключился. Комнаты с ботами считаются тестовыми, очки в них не начисляются.
+
+## Изменения в базе
+
+`supabase/schema.sql` идемпотентен: выполняется целиком в SQL Editor. В Auth должны быть включены Anonymous Sign-Ins.
+
+При добавлении героя нужно обновить и `heroes.json`, и блок каталога в конце `schema.sql`.
+
+## Ключи
+
+В `assets/js/api.js` находится только publishable key, он рассчитан на браузер. `service_role` и пароль базы в клиентский код добавлять нельзя.
