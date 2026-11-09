@@ -283,6 +283,19 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 .dock small { display: block; font-size: 13px; font-weight: 400; }
 .dock .btn { flex: none; }
 
+/* ---- Прогноз ---- */
+.predict { margin-bottom: 14px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.predict h3 { font-size: 24px; margin-bottom: 8px; }
+.predict-sides { display: flex; justify-content: space-between; gap: 16px; }
+.predict-side { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--team); }
+.predict-side strong { font: 900 clamp(44px, 7vw, 62px)/.95 var(--display); font-variant-numeric: tabular-nums; }
+.predict-name { font: 800 clamp(20px, 3vw, 28px)/1 var(--display); text-transform: uppercase; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.predict-bar { display: flex; gap: 3px; height: 10px; margin-top: 8px; }
+.predict-bar span { display: block; background: var(--team); border-radius: 2px; transition: width .5s ease-out; }
+.predict-best { display: flex; justify-content: space-between; gap: 16px; margin-top: 8px; font-size: 13px; color: var(--dim); }
+.predict-best span:last-child { text-align: right; }
+.predict .hint { margin-top: 6px; font-size: 13px; }
+
 /* ---- Итог ---- */
 .lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .lineup.winner { background: color-mix(in srgb, var(--team) 12%, var(--panel)); }

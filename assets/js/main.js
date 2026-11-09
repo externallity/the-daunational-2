@@ -18,6 +18,7 @@ export const app = {
   ready: false,
   fatal: '',
   heroes: new Map(),
+  winrates: null,
   room: null,
   live: false,
   busy: false,
@@ -289,6 +290,9 @@ async function boot() {
   try {
     const list = await fetch('heroes.json').then(r => { if (!r.ok) throw new Error('heroes'); return r.json(); });
     app.heroes = new Map(list.map(h => [h.id, h]));
+    fetch('assets/data/hero-winrates.json').then(r => r.json())
+      .then(d => { app.winrates = new Map(Object.entries(d.winrates).map(([id, wr]) => [Number(id), wr])); draw(); })
+      .catch(console.warn);
     app.uid = await api.signIn();
     const code = app.codeInput || store.get(ROOM_KEY);
     if (code) {

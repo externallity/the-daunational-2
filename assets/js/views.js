@@ -1,5 +1,6 @@
 import { html, nothing } from '../vendor/lit-html.js';
 import { isHost, draftClock } from './main.js';
+import { predict } from './prediction.js';
 
 const ATTRS = [['str', 'Сила'], ['agi', 'Ловкость'], ['int', 'Интеллект'], ['all', 'Универсальные']];
 const STAGES = [['lobby', 'Лобби'], ['captains', 'Капитаны'], ['squads', 'Составы'], ['coin', 'Монетка'], ['draft', 'Драфт'], ['result', 'Итог']];
@@ -312,6 +313,26 @@ function lineup(app, t, winner) {
   </div>`;
 }
 
+function predictionBlock(app) {
+  const r = app.room, d = r.draft;
+  const picks = t => d.order.flatMap((o, i) => (o.t === t && o.a === 'pick' && d.actions[i]?.hero ? [d.actions[i].hero] : []));
+  const p = predict(app.winrates, picks(0), picks(1));
+  if (!p) return nothing;
+  const bestLine = id => `Лучший пик: ${heroOf(app, id).name}, ${Math.round(app.winrates.get(id) * 100)}% побед в Turbo`;
+  return html`<div class="predict">
+    <h3>Прогноз по драфту</h3>
+    <div class="predict-sides">
+      <div class="predict-side t0"><span class="predict-name">${teamName(r, 0)}</span><strong>${p.a}%</strong></div>
+      <div class="predict-side t1"><strong>${p.b}%</strong><span class="predict-name">${teamName(r, 1)}</span></div>
+    </div>
+    <div class="predict-bar" role="img" aria-label=${`Шанс победы: ${p.a}% и ${p.b}%`}>
+      <span class="t0" style=${`width:${p.a}%`}></span><span class="t1" style=${`width:${p.b}%`}></span>
+    </div>
+    <div class="predict-best"><span>${bestLine(p.bestA)}</span><span>${bestLine(p.bestB)}</span></div>
+    <p class="hint">Оценка только по силе героев в Turbo. Как играют сами игроки, сайт не знает.</p>
+  </div>`;
+}
+
 function resultView(app, a) {
   const r = app.room, host = isHost(), done = r.stage === 'finished';
   const res = r.result;
@@ -320,6 +341,7 @@ function resultView(app, a) {
     <div class="section-title"><h2>${done ? 'Игра завершена' : 'Драфт завершён'}</h2></div>
     ${!done ? html`<p class="sub">Создавайте лобби в Dota 2 с режимом Turbo и берите героев из этого драфта.</p>` : nothing}
     ${done ? html`<p class="verdict">Победила <strong class=${'t' + (res.winner - 1)}>команда ${teamName(r, res.winner - 1)}</strong>, MVP проигравших — <strong>${nick(r, res.mvp)}</strong>${res.scored ? ', очки начислены.' : '. Тестовая игра, очки не начислялись.'}</p>` : nothing}
+    ${predictionBlock(app)}
     <div class="lineups">${lineup(app, 0, res?.winner)}${lineup(app, 1, res?.winner)}</div>
 
     ${!done && host ? html`<div class="result-form">
