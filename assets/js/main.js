@@ -242,7 +242,7 @@ export const actions = {
   selectHero: id => { app.selectedHero = app.selectedHero === id ? null : id; draw(); },
   confirmHero: () => act('draft', { hero: app.selectedHero, idx: app.room.draft.idx }),
 
-  setWinner: w => { app.winner = w; draw(); },
+  setWinner: w => { if (app.winner !== w) app.mvp = null; app.winner = w; draw(); },
   setMvp: id => { app.mvp = id; draw(); },
   finish: () => run(async () => applyState(await api.finishRoom(app.room.code, app.winner, app.mvp))),
 

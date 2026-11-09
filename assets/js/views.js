@@ -319,7 +319,7 @@ function resultView(app, a) {
   return html`<section class="stage">
     <div class="section-title"><h2>${done ? 'Игра завершена' : 'Драфт завершён'}</h2></div>
     ${!done ? html`<p class="sub">Создавайте лобби в Dota 2 с режимом Turbo и берите героев из этого драфта.</p>` : nothing}
-    ${done ? html`<p class="verdict">Победила <strong class=${'t' + (res.winner - 1)}>команда ${teamName(r, res.winner - 1)}</strong>, MVP — <strong>${nick(r, res.mvp)}</strong>${res.scored ? ', очки начислены.' : '. Тестовая игра, очки не начислялись.'}</p>` : nothing}
+    ${done ? html`<p class="verdict">Победила <strong class=${'t' + (res.winner - 1)}>команда ${teamName(r, res.winner - 1)}</strong>, MVP проигравших — <strong>${nick(r, res.mvp)}</strong>${res.scored ? ', очки начислены.' : '. Тестовая игра, очки не начислялись.'}</p>` : nothing}
     <div class="lineups">${lineup(app, 0, res?.winner)}${lineup(app, 1, res?.winner)}</div>
 
     ${!done && host ? html`<div class="result-form">
@@ -327,11 +327,11 @@ function resultView(app, a) {
       <div class="choice">
         ${[1, 2].map(w => html`<button class=${cls('slot pickable', 't' + (w - 1), app.winner === w && 'chosen')} @click=${() => a.setWinner(w)}><span class="slot-name">Победил ${teamName(r, w - 1)}</span></button>`)}
       </div>
-      <h3>MVP</h3>
-      <div class="choice mvp">
-        ${r.squads.flat().map(id => html`<button class=${cls('slot pickable', app.mvp === id && 'chosen')} @click=${() => a.setMvp(id)}><span class="slot-name">${nick(r, id)}</span></button>`)}
-      </div>
-      <p class="hint">Победа +100, поражение +40, MVP ещё +15.</p>
+      <h3>MVP проигравшей команды</h3>
+      ${app.winner ? html`<div class="choice mvp">
+        ${r.squads[2 - app.winner].map(id => html`<button class=${cls('slot pickable', app.mvp === id && 'chosen')} @click=${() => a.setMvp(id)}><span class="slot-name">${nick(r, id)}</span></button>`)}
+      </div>` : html`<p class="sub">Сначала выбери победителя.</p>`}
+      <p class="hint">Победа +100, поражение +40, MVP проигравших ещё +15.</p>
       <div class="controls"><button class="btn primary big" ?disabled=${!canFinish} @click=${a.finish}>Завершить и начислить очки</button></div>
     </div>` : nothing}
     ${!done && !host ? html`<p class="waiting">После матча организатор внесёт результат.</p>` : nothing}
@@ -357,7 +357,7 @@ function rulesOverlay(a) {
     <dt>Пул</dt><dd>Случайные 28 героев: по 7 силы, ловкости, интеллекта и универсальных.</dd>
     <dt>Драфт</dt><dd>У каждой команды 3 бана и 5 пиков. Начинает победитель монетки.</dd>
     <dt>Время</dt><dd>30 секунд на ход и 130 секунд резерва на команду. Если время вышло, бан пропадает, а пик выбирается случайно.</dd>
-    <dt>Очки</dt><dd>Победа +100, поражение +40, MVP ещё +15. Очки суммируются между играми.</dd>
+    <dt>Очки</dt><dd>Победа +100, поражение +40. MVP выбирается из проигравшей команды и получает ещё +15. Очки суммируются между играми.</dd>
     <dt>Ник</dt><dd>Один на весь турнир: очки записываются на него. Под другим ником очки не сложатся.</dd>
     <dt>Возврат</dt><dd>Вылетел или сменил устройство — введи свой ник и код комнаты и подтверди, что это ты.</dd>
   </dl>${prizesBlock()}`);

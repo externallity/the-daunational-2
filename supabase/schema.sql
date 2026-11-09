@@ -422,7 +422,8 @@ begin
   if v_room.host_user_id <> auth.uid() then raise exception 'FORBIDDEN'; end if;
   s := v_room.state;
   if s->>'stage' <> 'result' then raise exception 'WRONG_STAGE'; end if;
-  if not (s->'squads'->0) || (s->'squads'->1) ? p_mvp then raise exception 'BAD_MVP'; end if;
+  -- MVP выбирается только из проигравшей команды: p_winner 1 -> squads[1], 2 -> squads[0].
+  if not (s->'squads'->(2 - p_winner)) ? p_mvp then raise exception 'BAD_MVP'; end if;
 
   v_scored := not s->'players' @> '[{"bot": true}]'::jsonb;
 
