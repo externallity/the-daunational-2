@@ -27,7 +27,7 @@ body:after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;backg
 .landing-copy{width:min(900px,100%);text-align:center;position:relative;z-index:2}
 .kicker{font-size:11px;letter-spacing:.32em;color:#d3b47f}.kicker span{display:inline-block;width:24px;height:1px;background:#c49c5e;vertical-align:middle;margin-right:10px}
 .hero{font-size:clamp(42px,7.4vw,100px);line-height:1.04;letter-spacing:-.055em;margin:25px 0 22px;white-space:nowrap;text-shadow:0 8px 35px #000}
-.hero em{font-style:normal;color:#e2bd7e;white-space:nowrap;background:linear-gradient(180deg,#f5dfb4,#c59b5b);background-clip:text;-webkit-background-clip:text;color:transparent}
+.hero em{font-style:normal;color:var(--gold);white-space:nowrap;background:none;background-clip:border-box;-webkit-background-clip:border-box}
 .hero small{display:inline-block;font-size:.38em;vertical-align:top;margin:8px 0 0 10px;color:#c5a36e;letter-spacing:.08em}
 .lead{color:#c2c0bb;font-size:17px;line-height:1.75;max-width:590px;margin:0 auto}
 .actions{justify-content:center;gap:15px;margin-top:34px}
@@ -60,8 +60,8 @@ button.secondary:hover{border-color:#d2ad70;background:#242019}
 }
 
 /* FINAL VISUAL TUNING + SCOREBOARD */
-.hero em{background:linear-gradient(180deg,#fff0c9 0%,#f0ca83 45%,#d8a957 100%);background-clip:text;-webkit-background-clip:text;color:transparent;filter:drop-shadow(0 0 22px #d9aa5c44)}
-.hero{background:linear-gradient(180deg,#fff0c9 0%,#f0ca83 45%,#d8a957 100%);background-clip:text;-webkit-background-clip:text;color:transparent}.landing-stamp{display:none!important}
+.hero em{background:none;background-clip:border-box;-webkit-background-clip:border-box;color:var(--gold);filter:none}
+.hero{background:none;background-clip:border-box;-webkit-background-clip:border-box;color:inherit}.landing-stamp{display:none!important}
 .spell{position:absolute;width:clamp(74px,10vw,142px);height:clamp(74px,10vw,142px);object-fit:cover;border:1px solid #c49a5a55;box-shadow:0 0 0 7px #c49a5a0b,0 0 40px #b68a4b22;opacity:.13;filter:sepia(.35) saturate(.65) brightness(.85);transform:rotate(-9deg);border-radius:5px}
 .spell-a{left:8%;top:20%}.spell-b{right:9%;top:17%;transform:rotate(8deg)}.spell-c{left:16%;bottom:10%;transform:rotate(7deg)}.spell-d{right:15%;bottom:9%;transform:rotate(-8deg)}
 .header-right{display:flex;align-items:center;gap:20px}.score-tab{padding:9px 14px;font-size:9px;letter-spacing:.18em}.score-tab span{margin-left:10px}
