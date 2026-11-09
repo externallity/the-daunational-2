@@ -337,6 +337,43 @@ h3 { font: 800 28px/1.05 var(--display); text-transform: uppercase; overflow-wra
 .dock small { display: block; font-size: 13px; font-weight: 400; }
 .dock .btn { flex: none; }
 
+/* ---- Анимация пика и бана ---- */
+.reveal { position: fixed; inset: 0; z-index: 15; display: grid; place-items: center; pointer-events: none; }
+.reveal-card {
+  --accent: var(--team);
+  width: min(400px, calc(100vw - 48px)); padding: 12px 12px 14px; text-align: center;
+  background: rgb(10 12 16 / .94); border: 2px solid var(--accent); border-radius: 6px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / .6), 0 24px 70px rgb(0 0 0 / .75), 0 0 60px color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: reveal-card 1.3s cubic-bezier(.2, .9, .3, 1) both;
+}
+.is-ban .reveal-card { --accent: var(--ban); }
+.reveal-art { position: relative; overflow: hidden; border-radius: 3px; }
+.reveal-art img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.is-ban .reveal-art img { animation: reveal-fade 1.3s both; }
+.reveal-slash {
+  position: absolute; inset: 0; display: none;
+  background: linear-gradient(to top right, transparent calc(50% - 4px), var(--ban) calc(50% - 4px), var(--ban) calc(50% + 4px), transparent calc(50% + 4px));
+}
+.is-ban .reveal-slash { display: block; animation: reveal-slash 1.3s ease-out both; }
+.is-pick .reveal-art::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .55) 50%, transparent 65%);
+  animation: reveal-sweep 1.3s ease-out both;
+}
+.reveal-word { margin-top: 8px; font: 900 62px/.95 var(--display); text-transform: uppercase; letter-spacing: .03em; color: var(--accent); }
+.is-ban .reveal-word { color: #ff8a97; }
+.reveal-hero { font: 800 28px/1.05 var(--display); text-transform: uppercase; }
+.reveal-who { margin-top: 2px; font-size: 14px; font-weight: 600; color: var(--dim); }
+@keyframes reveal-card {
+  0% { opacity: 0; transform: scale(1.4); }
+  13% { opacity: 1; transform: scale(1); }
+  82% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.95); }
+}
+@keyframes reveal-fade { 0%, 22% { filter: none; } 42%, 100% { filter: grayscale(1) brightness(.5); } }
+@keyframes reveal-slash { 0%, 20% { clip-path: inset(0 100% 0 0); } 38%, 100% { clip-path: inset(0); } }
+@keyframes reveal-sweep { 0%, 12% { transform: translateX(-100%); } 50%, 100% { transform: translateX(100%); } }
+
 /* ---- Прогноз ---- */
 .predict { margin-bottom: 14px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
 .predict h3 { font-size: 24px; margin-bottom: 8px; }

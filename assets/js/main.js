@@ -19,6 +19,7 @@ export const app = {
   fatal: '',
   heroes: new Map(),
   winrates: null,
+  reveal: null,
   game: null,
   adminPin: null,
   room: null,
@@ -57,6 +58,22 @@ export function draw() {
 
 export const isHost = () => !!app.room && app.room.hostId === app.uid;
 
+// Крупный показ героя при новом бане или пике. Ход, пропущенный по таймеру, не показывается.
+const REVEAL_MS = 1300;
+let revealTimer = null;
+let revealKey = 0;
+
+function showReveal(prev, next) {
+  const before = prev?.draft?.actions.length;
+  const actions = next.draft?.actions;
+  if (before === undefined || !actions || actions.length <= before) return;
+  const i = actions.length - 1;
+  if (!actions[i].hero) return;
+  app.reveal = { key: ++revealKey, hero: actions[i].hero, a: next.draft.order[i].a, t: next.draft.order[i].t };
+  clearTimeout(revealTimer);
+  revealTimer = setTimeout(() => { app.reveal = null; draw(); }, REVEAL_MS);
+}
+
 function applyState(next) {
   if (!next || next.v !== 2) return;
   if (next.serverNow) app.clockOffset = Date.parse(next.serverNow) - Date.now();
@@ -75,6 +92,7 @@ function applyState(next) {
     app.coinSpinning = true;
     setTimeout(() => { app.coinSpinning = false; draw(); }, 1900);
   }
+  showReveal(prev, next);
   if (prev?.draft?.idx !== next.draft?.idx) app.selectedHero = null;
   if (next.stage !== 'result') { app.winner = null; app.mvp = null; }
   if (next.stage !== 'captains') app.pickedCaptains = [];

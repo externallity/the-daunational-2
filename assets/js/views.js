@@ -26,12 +26,30 @@ export function appView(app, a) {
     <main class=${cls('page', app.room && 'in-room')}>
       ${app.room ? roomView(app, a) : homeView(app, a)}
     </main>
+    ${app.reveal && app.room ? revealView(app) : nothing}
     ${app.error ? html`<div class="toast" role="alert"><span>${app.error}</span><button class="link" @click=${a.dismissError}>Закрыть</button></div>` : nothing}
     ${app.overlay === 'rules' ? rulesOverlay(a) : nothing}
     ${app.overlay === 'scores' ? scoresOverlay(app, a) : nothing}
     ${app.overlay === 'admin' ? adminOverlay(app, a) : nothing}
     ${app.confirm ? confirmOverlay(app, a) : nothing}
   `;
+}
+
+function revealView(app) {
+  const { key, hero, a, t } = app.reveal;
+  const h = heroOf(app, hero);
+  if (!h) return nothing;
+  const ban = a === 'ban';
+  const card = html`<div class=${cls('reveal-card', 't' + t)}>
+    <div class="reveal-art"><img src=${h.img} alt=""><span class="reveal-slash"></span></div>
+    <p class="reveal-word">${ban ? 'Бан' : 'Пик'}</p>
+    <p class="reveal-hero">${h.name}</p>
+    <p class="reveal-who">${teamName(app.room, t)}</p>
+  </div>`;
+  // Два одинаковых шаблона: при смене lit пересоздаёт элемент, и анимация запускается заново.
+  return key % 2
+    ? html`<div class=${cls('reveal', ban ? 'is-ban' : 'is-pick')} aria-hidden="true">${card}</div>`
+    : html`<div class=${cls('reveal', ban ? 'is-ban' : 'is-pick')} aria-hidden="true" data-alt>${card}</div>`;
 }
 
 function header(app, a) {
