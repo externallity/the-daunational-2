@@ -21,12 +21,9 @@ body {
   min-height: 100dvh;
   color: var(--text);
   font: 400 16px/1.45 var(--body);
-  background:
-    radial-gradient(60vw 50vh at 0% 0%, color-mix(in srgb, var(--team-a) 9%, transparent), transparent 70%),
-    radial-gradient(60vw 50vh at 100% 0%, color-mix(in srgb, var(--team-b) 9%, transparent), transparent 70%),
-    var(--ink);
-  background-attachment: fixed;
 }
+/* Мягкий фон по мотивам карты: Radiant внизу слева, Dire вверху справа, река между ними. */
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: url(bg.svg) center / cover no-repeat; pointer-events: none; }
 h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 img { display: block; max-width: 100%; }
