@@ -350,7 +350,7 @@ begin
         'pool', public._hero_pool(),
         'order', public._cm_order((s->'coin'->>'winner')::int),
         'actions', '[]'::jsonb, 'idx', 0,
-        'turnSeconds', 30, 'reserve', jsonb_build_array(210, 210),
+        'turnSeconds', 30, 'reserve', jsonb_build_array(130, 130),
         'turnStartedAt', now()));
 
   when 'draft', 'timeout' then
