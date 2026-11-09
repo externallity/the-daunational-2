@@ -185,6 +185,22 @@ export const actions = {
   joinGame() {
     const nick = app.nick.trim();
     if (!nick) { app.error = 'Сначала укажи ник.'; draw(); return; }
+    const key = nick.toLowerCase();
+    const seat = app.game?.players.find(p => !p.mine && p.nick.toLowerCase() === key);
+    if (seat) {
+      ask({
+        title: 'Это ты?',
+        highlight: seat.nick,
+        text: 'Этот ник уже есть в списке. Если это ты, место закрепится за этим браузером.',
+        noLabel: 'Нет, другой ник',
+        yesLabel: 'Да, это я',
+        onYes: () => {
+          store.set(NICK_KEY, seat.nick);
+          run(async () => { app.game = await api.reclaimSignup(seat.nick); });
+        },
+      });
+      return;
+    }
     askNick(nick, () => {
       store.set(NICK_KEY, nick);
       run(async () => { app.game = await api.joinGame(nick); });

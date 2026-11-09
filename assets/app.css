@@ -156,6 +156,7 @@ input::placeholder { color: #5b6270; }
 .game-join input { padding: 11px 12px; }
 .game-action { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .game-status { font: 800 22px/1.1 var(--display); text-transform: uppercase; color: var(--team-a); }
+.game-full { margin-bottom: 8px; }
 .game-admin { display: block; margin: 8px 0 0 auto; font-size: 13px; font-weight: 400; }
 .admin-form .field { margin-bottom: 4px; }
 .admin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

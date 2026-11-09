@@ -66,6 +66,7 @@ export const finishRoom = (code, winner, mvp) => rpc('finish_room', { p_code: co
 
 export const getNextGame = () => rpc('get_next_game', {});
 export const joinGame = nick => rpc('join_game', { p_nick: nick });
+export const reclaimSignup = nick => rpc('reclaim_signup', { p_nick: nick });
 export const leaveGame = () => rpc('leave_game', {});
 export const adminCheck = pin => rpc('admin_check', { p_pin: pin });
 export const adminSetGame = (pin, date, time) => rpc('admin_set_game', { p_pin: pin, p_date: date, p_time: time || null });

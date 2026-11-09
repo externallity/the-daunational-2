@@ -576,6 +576,23 @@ begin
 end;
 $$;
 
+-- Возврат своей записи с другого устройства или адреса: игрок подтвердил на сайте, что это его ник.
+create or replace function public.reclaim_signup(p_nick text)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform 1 from public.next_game for update;
+  if not found then raise exception 'NO_GAME'; end if;
+  if exists (select 1 from public.game_signups where user_id = v_uid and lower(nick) <> lower(btrim(p_nick))) then
+    raise exception 'ALREADY_IN';
+  end if;
+  update public.game_signups set user_id = v_uid where lower(nick) = lower(btrim(p_nick));
+  if not found then raise exception 'NO_SEAT'; end if;
+  return public.get_next_game();
+end;
+$$;
+
 create or replace function public.leave_game()
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 begin
@@ -684,6 +701,8 @@ grant execute on function public.admin_delete_score(text, text) to authenticated
 revoke all on function public.get_next_game() from public, anon;
 revoke all on function public.join_game(text) from public, anon;
 revoke all on function public.leave_game() from public, anon;
+revoke all on function public.reclaim_signup(text) from public, anon;
+grant execute on function public.reclaim_signup(text) to authenticated;
 revoke all on function public.admin_check(text) from public, anon;
 revoke all on function public.admin_set_game(text, date, time) from public, anon;
 revoke all on function public.admin_clear_game(text, boolean) from public, anon;

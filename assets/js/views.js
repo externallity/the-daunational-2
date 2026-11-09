@@ -145,10 +145,10 @@ function gameCard(app, a) {
           <p class="game-status">Ты в стаке</p>
           <button class="btn ghost" ?disabled=${app.busy} @click=${a.leaveGame}>Выйти из стака</button>
         </div>`
-      : full ? html`<p class="game-status">Стак собран, все места заняты</p>`
-      : html`<form class="game-join" @submit=${onJoin}>
-          <input maxlength="24" autocomplete="nickname" placeholder="Твой ник" aria-label="Твой ник" .value=${app.nick} @input=${e => a.setNick(e.target.value)}>
-          <button class="btn primary" ?disabled=${app.busy}>Присоединиться</button>
+      : html`${full ? html`<p class="game-status game-full">Стак собран, все места заняты</p>` : nothing}
+        <form class="game-join" @submit=${onJoin}>
+          <input maxlength="24" autocomplete="nickname" placeholder=${full ? 'Уже в списке? Твой ник' : 'Твой ник'} aria-label="Твой ник" .value=${app.nick} @input=${e => a.setNick(e.target.value)}>
+          <button class=${cls('btn', !full && 'primary')} ?disabled=${app.busy}>${full ? 'Это мой ник' : 'Присоединиться'}</button>
         </form>`}
     ` : nothing}
     <button class="link dim game-admin" @click=${a.openAdmin}>${app.adminPin ? 'Управление игрой' : 'Организатор'}</button>
