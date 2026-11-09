@@ -230,9 +230,38 @@ function reserveOf(d, t) {
   return draftClock(d).reserve;
 }
 
+// Порядок драфта: по дорожке на команду, столбцы идут слева направо по очереди ходов.
+function timeline(app, d) {
+  const r = app.room;
+  const phases = [];
+  d.order.forEach((o, i) => {
+    const last = phases[phases.length - 1];
+    if (last && last.a === o.a) last.n++;
+    else phases.push({ a: o.a, start: i, n: 1 });
+  });
+  const stepCell = (o, i) => {
+    const x = d.actions[i], h = x?.hero ? heroOf(app, x.hero) : null;
+    const word = o.a === 'ban' ? 'Бан' : 'Пик';
+    return html`<div class=${cls('tl-step', 't' + o.t, o.a === 'ban' ? 'is-ban' : 'is-pick', x && 'done', i === d.idx && 'now')}
+      style=${`grid-column:${i + 2};grid-row:${o.t + 2}`} title=${`${i + 1}. ${teamName(r, o.t)}: ${word.toLowerCase()}`}>
+      ${h ? html`<img src=${h.img} alt=${h.name}>` : x ? html`<i class="tl-skip">—</i>` : html`<i class="tl-word">${word}</i><i class="tl-sign">${o.a === 'ban' ? '×' : '+'}</i>`}
+    </div>`;
+  };
+  return html`<div class="tl" style=${`--steps:${d.order.length}`} role="img" aria-label="Порядок банов и пиков">
+    ${phases.map(p => html`<div class=${cls('tl-phase', p.a === 'ban' ? 'is-ban' : 'is-pick', d.idx >= p.start && d.idx < p.start + p.n && 'current')}
+      style=${`grid-column:${p.start + 2} / span ${p.n}`}>${p.a === 'ban' ? 'Баны' : 'Пики'}</div>`)}
+    ${[0, 1].map(t => html`
+      <div class=${'tl-lane t' + t} style=${`grid-row:${t + 2}`}></div>
+      <div class=${'tl-team t' + t} style=${`grid-row:${t + 2}`}><span class="tl-nick">${teamName(r, t)}</span><span class="tl-num">${t + 1}</span></div>
+    `)}
+    ${d.order.map(stepCell)}
+  </div>`;
+}
+
 function draftView(app, a) {
   const r = app.room, d = r.draft;
   const step = d.order[d.idx];
+  const next = d.order[d.idx + 1];
   const clock = draftClock(d);
   const captainId = r.captains[step.t];
   const isCaptain = captainId === app.uid;
@@ -257,8 +286,11 @@ function draftView(app, a) {
   return html`<section class="draft">
     <div class=${cls('turnbar', 't' + step.t, step.a === 'ban' && 'is-ban')}>
       <div class="turn-text">
-        <p class="eyebrow">Ход ${d.idx + 1} из ${d.order.length}</p>
-        <h2><span class="verb">${verb}</span> ${teamName(r, step.t)}</h2>
+        <p class="eyebrow">${step.a === 'ban' ? 'Фаза банов' : 'Фаза пиков'} · ход ${d.idx + 1} из ${d.order.length}</p>
+        <h2>${isCaptain
+          ? html`<span class="verb">Твой ход:</span> ${step.a === 'ban' ? 'забань героя' : 'выбери героя'}`
+          : html`${teamName(r, step.t)} <span class="verb">${step.a === 'ban' ? 'банит' : 'пикает'}</span>`}</h2>
+        <p class="turn-next">${next ? `Дальше: ${teamName(r, next.t)} · ${next.a === 'ban' ? 'бан' : 'пик'}` : 'Последний ход драфта'}</p>
       </div>
       <div class=${cls('timer', urgent && 'urgent', clock.inReserve && 'reserve-mode')} role="timer">
         <small>${clock.inReserve ? 'Резерв' : 'Время'}</small>
@@ -266,14 +298,7 @@ function draftView(app, a) {
       </div>
     </div>
 
-    <ol class="strip" aria-label="Порядок драфта">
-      ${d.order.map((o, i) => {
-        const x = d.actions[i], h = x?.hero ? heroOf(app, x.hero) : null;
-        return html`<li class=${cls('cell', 't' + o.t, o.a, i === d.idx && 'now', x && 'done')}>
-          ${h ? html`<img src=${h.img} alt="">` : html`<i>${o.a === 'ban' ? 'Б' : 'П'}</i>`}
-        </li>`;
-      })}
-    </ol>
+    ${timeline(app, d)}
 
     <div class="arena">
       ${teamPanel(app, 0, d, step.t)}
