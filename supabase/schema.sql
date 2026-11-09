@@ -140,3 +140,56 @@ begin
   alter publication supabase_realtime add table public.rooms;
 exception when duplicate_object then null;
 end $$;
+
+
+-- Global tournament leaderboard and atomic match finalization.
+create table if not exists public.tournament_scores (
+ nickname text primary key check (length(trim(nickname)) between 1 and 32),
+ total_points integer not null default 0 check (total_points >= 0),
+ wins integer not null default 0 check (wins >= 0),
+ losses integer not null default 0 check (losses >= 0),
+ mvp_awards integer not null default 0 check (mvp_awards >= 0),
+ games_played integer not null default 0 check (games_played >= 0),
+ updated_at timestamptz not null default now()
+);
+alter table public.tournament_scores enable row level security;
+drop policy if exists "Authenticated users can read tournament scores" on public.tournament_scores;
+create policy "Authenticated users can read tournament scores" on public.tournament_scores for select to authenticated using (true);
+grant select on public.tournament_scores to authenticated;
+
+create or replace function public.finish_room(p_code text, p_winner integer, p_mvp text)
+returns jsonb language plpgsql security definer set search_path = public, auth as $$
+declare v_room public.rooms; v_state jsonb; v_team1 jsonb; v_team2 jsonb; v_winners jsonb; v_losers jsonb; v_name text;
+begin
+ if auth.uid() is null then raise exception 'Authentication required'; end if;
+ if p_winner not in (1,2) then raise exception 'Invalid winning team'; end if;
+ select * into v_room from public.rooms where code=upper(trim(p_code)) for update;
+ if not found then raise exception 'Room not found'; end if;
+ if v_room.host_user_id<>auth.uid() then raise exception 'Only the room host can finish the room'; end if;
+ v_state:=v_room.state;
+ if v_state->>'stage'<>'result' then raise exception 'Room is not ready to finish'; end if;
+ if coalesce((v_state->>'matchFinalized')::boolean,false) then raise exception 'Room already finished'; end if;
+ v_team1:=coalesce(v_state->'teamsPlayers'->0,'[]'::jsonb);
+ v_team2:=coalesce(v_state->'teamsPlayers'->1,'[]'::jsonb);
+ if jsonb_array_length(v_team1)=0 or jsonb_array_length(v_team2)=0 then raise exception 'Both teams must have players'; end if;
+ if not ((v_team1||v_team2) ? trim(p_mvp)) then raise exception 'MVP must be a player in this match'; end if;
+ if p_winner=1 then v_winners:=v_team1;v_losers:=v_team2; else v_winners:=v_team2;v_losers:=v_team1; end if;
+ for v_name in select jsonb_array_elements_text(v_winners) loop
+  insert into public.tournament_scores(nickname,total_points,wins,games_played) values(v_name,100,1,1)
+  on conflict(nickname) do update set total_points=tournament_scores.total_points+100,wins=tournament_scores.wins+1,games_played=tournament_scores.games_played+1,updated_at=now();
+ end loop;
+ for v_name in select jsonb_array_elements_text(v_losers) loop
+  insert into public.tournament_scores(nickname,total_points,losses,games_played) values(v_name,40,1,1)
+  on conflict(nickname) do update set total_points=tournament_scores.total_points+40,losses=tournament_scores.losses+1,games_played=tournament_scores.games_played+1,updated_at=now();
+ end loop;
+ insert into public.tournament_scores(nickname,total_points,mvp_awards) values(trim(p_mvp),15,1)
+ on conflict(nickname) do update set total_points=tournament_scores.total_points+15,mvp_awards=tournament_scores.mvp_awards+1,updated_at=now();
+ v_state:=jsonb_set(v_state,'{matchFinalized}','true'::jsonb,true);
+ v_state:=jsonb_set(v_state,'{matchWinner}',to_jsonb(p_winner),true);
+ v_state:=jsonb_set(v_state,'{matchMvp}',to_jsonb(trim(p_mvp)),true);
+ v_state:=jsonb_set(v_state,'{stage}',to_jsonb('finished'::text),true);
+ v_state:=jsonb_set(v_state,'{finishedAt}',to_jsonb(now()),true);
+ update public.rooms set state=v_state,updated_at=now() where code=v_room.code;
+ return v_state;
+end; $$;
+grant execute on function public.finish_room(text,integer,text) to authenticated;
