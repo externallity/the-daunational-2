@@ -447,11 +447,11 @@ begin
     for v_team in 0..1 loop
       v_win := v_team + 1 = p_winner;
       for v_id in select jsonb_array_elements_text(s->'squads'->v_team) loop
-        perform public._award(public._nick(s, v_id), case when v_win then 100 else 40 end,
+        perform public._award(public._nick(s, v_id), case when v_win then 100 else 50 end,
                               case when v_win then 1 else 0 end, case when v_win then 0 else 1 end, 0, 1);
       end loop;
     end loop;
-    perform public._award(public._nick(s, p_mvp), 15, 0, 0, 1, 0);
+    perform public._award(public._nick(s, p_mvp), 20, 0, 0, 1, 0);
   end if;
 
   s := s || jsonb_build_object(
