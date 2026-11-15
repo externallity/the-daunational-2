@@ -32,6 +32,10 @@ export const app = {
   confirm: null,
   scores: null,
   scoresError: '',
+  history: null,
+  histSlide: 0,
+  histHover: false,
+  histFilter: null,
   nick: store.get(NICK_KEY) || '',
   codeInput: new URLSearchParams(location.search).get('room')?.toUpperCase() || '',
   pickedCaptains: [],
@@ -213,12 +217,13 @@ export const actions = {
       onYes: () => run(async () => { app.game = await api.leaveGame(); }),
     });
   },
-  openAdmin(ret) { app.adminReturn = ret === 'scores' ? 'scores' : null; app.overlay = 'admin'; draw(); },
+  openAdmin(ret) { app.adminReturn = ['scores', 'history'].includes(ret) ? ret : null; app.overlay = 'admin'; draw(); },
   adminUnlock(pin) {
     run(async () => {
       await api.adminCheck(pin);
       app.adminPin = pin;
       if (app.adminReturn === 'scores') actions.openScores();
+      if (app.adminReturn === 'history') { app.overlay = 'history'; draw(); }
     });
   },
   adminAddSignup(nick) {
@@ -334,7 +339,16 @@ export const actions = {
 
   setWinner: w => { if (app.winner !== w) app.mvp = null; app.winner = w; draw(); },
   setMvp: id => { app.mvp = id; draw(); },
-  finish: () => run(async () => applyState(await api.finishRoom(app.room.code, app.winner, app.mvp))),
+  finish: () => run(async () => { applyState(await api.finishRoom(app.room.code, app.winner, app.mvp)); refreshHistory(); }),
+
+  openHistory: () => { app.overlay = 'history'; app.histFilter = null; draw(); refreshHistory(); },
+  setHistFilter: nick => { app.histFilter = app.histFilter === nick ? null : nick; draw(); },
+  setHistSlide: i => { app.histSlide = i; draw(); },
+  setHistHover: v => { app.histHover = v; },
+  adminDeleteMatch(m) {
+    ask({ text: `Удалить из истории игру ${m.game} сбора ${m.meet}? Очки в таблице не изменятся, их правят отдельно.`, yesLabel: 'Удалить',
+      onYes: () => run(async () => { app.history = await api.adminDeleteMatch(app.adminPin, m.id); }) });
+  },
 
   openRules: () => { app.overlay = 'rules'; draw(); },
   async openScores() {
@@ -379,6 +393,11 @@ async function refreshGame() {
   catch (e) { console.warn(e); }
 }
 
+async function refreshHistory() {
+  try { app.history = await api.getHistory(); draw(); }
+  catch (e) { console.warn(e); }
+}
+
 async function boot() {
   document.getElementById('app').replaceChildren();
   try {
@@ -390,6 +409,7 @@ async function boot() {
     api.setUserListener(id => { app.uid = id; });
     app.uid = await api.signIn();
     refreshGame();
+    refreshHistory();
     const code = app.codeInput || store.get(ROOM_KEY);
     if (code) {
       try {
@@ -416,4 +436,11 @@ document.addEventListener('keydown', e => {
 setInterval(tick, 250);
 // Список на игру виден только на главной: обновляем его, пока она открыта.
 setInterval(() => { if (app.uid && !app.room && !document.hidden) refreshGame(); }, 10000);
+setInterval(() => { if (app.uid && !app.room && !document.hidden) refreshHistory(); }, 60000);
+// Заставка истории на главной листает три последние игры, пока на неё не навели мышь.
+setInterval(() => {
+  if (app.room || app.overlay || app.histHover || document.hidden) return;
+  const n = Math.min(3, app.history?.length || 0);
+  if (n > 1) { app.histSlide = (app.histSlide + 1) % n; draw(); }
+}, 7000);
 boot();

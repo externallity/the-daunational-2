@@ -105,6 +105,8 @@ export const adminRemoveSignup = (pin, nick) => rpc('admin_remove_signup', { p_p
 export const adminAddSignup = (pin, nick) => rpc('admin_add_signup', { p_pin: pin, p_nick: nick });
 export const adminSetScore = (pin, nick, s) => rpc('admin_set_score', { p_pin: pin, p_nick: nick, p_points: s.points, p_wins: s.wins, p_games: s.games, p_mvp: s.mvp });
 export const adminDeleteScore = (pin, nick) => rpc('admin_delete_score', { p_pin: pin, p_nick: nick });
+export const getHistory = () => rpc('get_history', {});
+export const adminDeleteMatch = (pin, id) => rpc('admin_delete_match', { p_pin: pin, p_id: id });
 
 export async function getScores() {
   const { data, error } = await db.from('tournament_scores')

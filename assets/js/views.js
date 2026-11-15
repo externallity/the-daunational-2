@@ -31,6 +31,7 @@ export function appView(app, a) {
     ${app.overlay === 'rules' ? rulesOverlay(a) : nothing}
     ${app.overlay === 'scores' ? scoresOverlay(app, a) : nothing}
     ${app.overlay === 'admin' ? adminOverlay(app, a) : nothing}
+    ${app.overlay === 'history' ? historyOverlay(app, a) : nothing}
     ${app.confirm ? confirmOverlay(app, a) : nothing}
   `;
 }
@@ -70,13 +71,79 @@ function header(app, a) {
 
 /* ---------- Главная ---------- */
 
-function homeBoard(app) {
-  const list = [...app.heroes.values()];
-  const rows = ATTRS.flatMap(([k]) => list.filter(h => h.attr === k).slice(3, 10));
-  const banned = new Set([2, 9, 15, 20, 24]), first = new Set([5, 12]), second = new Set([17, 26]);
-  return html`<div class="demo-board" aria-hidden="true">
-    ${rows.map((h, i) => html`<div class=${cls('demo-tile', banned.has(i) && 'banned', first.has(i) && 'pick-a', second.has(i) && 'pick-b')}><img src=${h.img} alt=""></div>`)}
+/* ---------- История игр ---------- */
+
+const matchDate = iso => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
+const renderOf = h => `assets/renders/${h.internal}.webp`;
+
+// Состав одной команды: ники (капитан первым, MVP подсвечен) и, по желанию, полоска пиков.
+function histTeam(app, m, t, withHeroes) {
+  const team = m.teams[t], won = m.winner === t + 1;
+  return html`<div class=${cls('hx-team', 'hx-t' + t, !won && 'hx-lose')}>
+    <div class="hx-team-head"><b>Команда ${team.captain}</b>${won ? html`<span class="hx-win">Победа</span>` : nothing}</div>
+    ${withHeroes ? html`<div class="hx-faces">${team.heroes.map(id => { const h = heroOf(app, id); return h ? html`<img src=${h.img} alt=${h.name} title=${h.name}>` : nothing; })}</div>` : nothing}
+    <ul class="hx-roster">${team.players.map((n, i) => html`<li class=${cls(i === 0 && 'hx-cap', n === m.mvp && 'hx-mvp')}>${n}</li>`)}</ul>
   </div>`;
+}
+
+function historyBlock(app, a) {
+  const list = app.history;
+  if (!list) return nothing;
+  if (!list.length) {
+    return html`<section class="hx-empty">
+      <p class="hx-empty-title">Прошлые игры</p>
+      <p>Здесь появятся сыгранные игры: составы, герои, победитель и MVP.</p>
+    </section>`;
+  }
+  const recent = list.slice(0, 3);
+  const i = app.histSlide % recent.length;
+  const m = recent[i];
+  const wt = m.winner - 1;
+  const heroes = m.teams[wt].heroes.map(id => heroOf(app, id)).filter(Boolean);
+  return html`<section class="hx" @mouseenter=${() => a.setHistHover(true)} @mouseleave=${() => a.setHistHover(false)}>
+    <div class="hx-show">
+      <div class="hx-art" aria-hidden="true">${heroes.map(h => html`<div><img src=${renderOf(h)} alt="" loading="lazy" @error=${e => { e.target.src = h.img; }}></div>`)}</div>
+      ${recent.length > 1 ? html`<div class="hx-dots">${recent.map((_, k) => html`<button class=${cls(k === i && 'on')} aria-label=${'Игра ' + (k + 1)} @click=${() => a.setHistSlide(k)}></button>`)}</div>` : nothing}
+      <div class="hx-caption">
+        <p>Игра ${m.game} · Сбор ${m.meet} · ${matchDate(m.at)}</p>
+        <h3>Победа <span class=${'hx-c' + wt}>команды ${m.teams[wt].captain}</span></h3>
+      </div>
+    </div>
+    <div class="hx-body">
+      <div class="hx-teams">${histTeam(app, m, 0, false)}${histTeam(app, m, 1, false)}</div>
+      <button class="btn hx-all" @click=${a.openHistory}>Вся история игр</button>
+    </div>
+  </section>`;
+}
+
+function historyOverlay(app, a) {
+  const list = app.history;
+  const nicks = [...new Set((list || []).flatMap(m => m.teams.flatMap(t => t.players)))].sort((x, y) => x.localeCompare(y, 'ru'));
+  const shown = (list || []).filter(m => !app.histFilter || m.teams.some(t => t.players.includes(app.histFilter)));
+  const meets = [];
+  for (const m of shown) {
+    let g = meets.find(x => x.meet === m.meet);
+    if (!g) meets.push(g = { meet: m.meet, date: matchDate(m.at), games: [] });
+    g.games.push(m);
+  }
+  return overlay(a, 'История игр', html`
+    ${!list ? html`<p class="hint">Загружаем…</p>` : nothing}
+    ${list && !list.length ? html`<p class="hint">Сыгранных игр пока нет.</p>` : nothing}
+    ${nicks.length ? html`<div class="hx-chips">
+      <button class=${cls(!app.histFilter && 'on')} @click=${() => a.setHistFilter(null)}>Все игроки</button>
+      ${nicks.map(n => html`<button class=${cls(app.histFilter === n && 'on')} @click=${() => a.setHistFilter(n)}>${n}</button>`)}
+    </div>` : nothing}
+    ${meets.map(g => html`<section class="hx-meet">
+      <h3>Сбор ${g.meet} <span>· ${g.date} · ${g.games.length} ${g.games.length === 1 ? 'игра' : g.games.length < 5 ? 'игры' : 'игр'}</span></h3>
+      ${g.games.map(m => html`<article class="hx-match">
+        <div class="hx-match-top"><span>Игра ${m.game}</span>
+          ${app.adminPin ? html`<button class="link dim" @click=${() => a.adminDeleteMatch(m)}>Удалить</button>` : html`<span>MVP: ${m.mvp}</span>`}
+        </div>
+        <div class="hx-teams">${histTeam(app, m, 0, true)}${histTeam(app, m, 1, true)}</div>
+      </article>`)}
+    </section>`)}
+    ${app.adminPin ? nothing : html`<div class="controls end"><button class="link dim game-admin" @click=${() => a.openAdmin('history')}>Организатор</button></div>`}
+  `);
 }
 
 function homeView(app, a) {
@@ -100,7 +167,7 @@ function homeView(app, a) {
     </div>
     <div class="home-side">
       ${gameCard(app, a)}
-      ${homeBoard(app)}
+      ${historyBlock(app, a)}
     </div>
   </section>`;
 }

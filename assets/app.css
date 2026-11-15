@@ -124,17 +124,57 @@ input::placeholder { color: #5b6270; }
 .code { text-transform: uppercase; letter-spacing: .1em; }
 .entry-or { grid-column: 1 / -1; color: var(--dim); }
 
-.demo-board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.demo-tile { position: relative; aspect-ratio: 16/9; background: var(--panel); overflow: hidden; border-radius: 2px; }
-.demo-tile img { width: 100%; height: 100%; object-fit: cover; opacity: .82; }
-.demo-tile.banned img { filter: grayscale(1) brightness(.4); opacity: 1; }
-.demo-tile.banned::after, .hero.banned::after {
+.hero.banned::after {
   content: ''; position: absolute; inset: 0;
   background: linear-gradient(to top right, transparent calc(50% - 1.5px), var(--ban) calc(50% - 1.5px), var(--ban) calc(50% + 1.5px), transparent calc(50% + 1.5px));
 }
-.demo-tile.pick-a img, .demo-tile.pick-b img { opacity: 1; }
-.demo-tile.pick-a::after, .demo-tile.pick-b::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--team-a); }
-.demo-tile.pick-b::after { box-shadow: inset 0 0 0 2px var(--team-b); }
+
+/* ---- История игр: заставка на главной и окно ---- */
+.hx-empty { padding: 14px 16px; background: var(--panel); border: 1px dashed var(--line); border-radius: 4px; color: var(--dim); font-size: 14px; }
+.hx-empty-title { font: 800 20px/1 var(--display); text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.hx { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel); }
+.hx-show { position: relative; height: 150px; background: #07080b; }
+.hx-art { position: absolute; inset: 0; display: flex; }
+.hx-art div { flex: 1; min-width: 0; overflow: hidden; margin: 0 -10px; clip-path: polygon(20px 0, 100% 0, calc(100% - 20px) 100%, 0 100%); }
+.hx-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
+.hx-show::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 30%, rgb(7 8 11 / .95)); pointer-events: none; }
+.hx-caption { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 10px; }
+.hx-caption p { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.hx-caption h3 { margin-top: 3px; font: 900 28px/1 var(--display); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-c0 { color: var(--team-a); } .hx-c1 { color: var(--team-b); }
+.hx-dots { position: absolute; z-index: 2; top: 8px; right: 8px; display: flex; gap: 2px; }
+.hx-dots button { width: 18px; height: 18px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; }
+.hx-dots button::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: rgb(255 255 255 / .35); }
+.hx-dots button.on::before { background: var(--signal); }
+.hx-body { padding: 10px 12px 12px; }
+.hx-teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.hx-team { min-width: 0; padding: 7px 9px; background: var(--panel-2); border-radius: 3px; border-top: 2px solid var(--c); }
+.hx-t0 { --c: var(--team-a); } .hx-t1 { --c: var(--team-b); }
+.hx-team.hx-lose { border-top-color: #3a404c; }
+.hx-team-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+.hx-team-head b { min-width: 0; font: 800 15px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-lose .hx-team-head b { color: var(--dim); }
+.hx-win { flex: none; font: 800 11px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #07080b; background: var(--c); padding: 3px 5px 2px; border-radius: 2px; }
+.hx-faces { display: flex; gap: 2px; margin-bottom: 5px; }
+.hx-faces img { flex: 1; min-width: 0; height: 22px; object-fit: cover; border-radius: 1px; }
+.hx-lose .hx-faces img { filter: grayscale(.85) brightness(.6); }
+.hx-roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; font-size: 13px; }
+.hx-roster li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-lose .hx-roster { color: var(--dim); }
+.hx-roster .hx-cap { font-weight: 700; }
+.hx-roster .hx-cap::after { content: ' · кэп'; color: var(--dim); font-weight: 400; font-size: 11px; }
+.hx-roster .hx-mvp { color: var(--signal); font-weight: 700; }
+.hx-roster .hx-mvp::before { content: 'MVP '; font: 800 11px/1 var(--display); letter-spacing: .05em; }
+.hx-all { width: 100%; margin-top: 10px; }
+.hx-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.hx-chips button { padding: 5px 10px; background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 20px; font: 600 13px/1.2 var(--body); cursor: pointer; }
+.hx-chips button:hover { color: var(--text); }
+.hx-chips button.on { color: var(--signal); border-color: var(--signal); }
+.hx-meet h3 { margin: 16px 0 8px; font: 800 22px/1 var(--display); text-transform: uppercase; color: var(--signal); }
+.hx-meet h3 span { color: var(--dim); font-weight: 600; }
+.hx-match { padding: 8px; margin-bottom: 8px; background: #0f1218; border-radius: 3px; }
+.hx-match-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.hx-match-top .link { font-size: 13px; letter-spacing: 0; text-transform: none; }
 
 /* ---- Ближайшая игра ---- */
 .home-side { display: grid; gap: 14px; min-width: 0; width: min(100%, 470px); justify-self: end; }
