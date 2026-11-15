@@ -420,6 +420,72 @@ begin
 end;
 $$;
 
+-- ============================================================
+-- История игр
+-- Комната при «Следующей игре» очищается, поэтому каждая засчитанная игра
+-- сохраняется отдельно: ники составов на момент игры, пики, победитель, MVP.
+-- ============================================================
+
+create table if not exists public.match_history (
+  id bigserial primary key,
+  room_code text not null,
+  played_at timestamptz not null default now(),
+  winner integer not null check (winner in (1, 2)),
+  mvp text,
+  teams jsonb not null
+);
+alter table public.match_history enable row level security;
+revoke all on public.match_history from anon, authenticated;
+
+-- teams: [{captain, players: [ники, капитан первым], heroes: [id пиков по порядку]}, ...]
+create or replace function public._record_match(p_code text, s jsonb, p_winner integer, p_mvp text)
+returns void language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_teams jsonb := '[]'::jsonb;
+  v_team integer;
+  v_cap text;
+begin
+  for v_team in 0..1 loop
+    v_cap := s->'captains'->>v_team;
+    v_teams := v_teams || jsonb_build_array(jsonb_build_object(
+      'captain', public._nick(s, v_cap),
+      'players', (select coalesce(jsonb_agg(public._nick(s, id) order by (id = v_cap) desc, ord), '[]'::jsonb)
+                    from jsonb_array_elements_text(s->'squads'->v_team) with ordinality as x(id, ord)),
+      'heroes', (select coalesce(jsonb_agg((act->>'hero')::int order by ord), '[]'::jsonb)
+                   from jsonb_array_elements(s->'draft'->'actions') with ordinality as y(act, ord)
+                  where s->'draft'->'order'->((ord - 1)::int)->>'a' = 'pick'
+                    and (s->'draft'->'order'->((ord - 1)::int)->>'t')::int = v_team
+                    and act->>'hero' is not null)));
+  end loop;
+  insert into public.match_history(room_code, winner, mvp, teams)
+  values (p_code, p_winner, public._nick(s, p_mvp), v_teams);
+end;
+$$;
+
+-- Сбор = отдельный игровой день по Москве; game — номер игры внутри сбора.
+create or replace function public.get_history()
+returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', id, 'at', played_at, 'winner', winner, 'mvp', mvp, 'teams', teams,
+           'meet', meet, 'game', game) order by played_at desc, id desc), '[]'::jsonb)
+  from (
+    select *,
+           dense_rank() over (order by (played_at at time zone 'Europe/Moscow')::date) as meet,
+           row_number() over (partition by (played_at at time zone 'Europe/Moscow')::date order by played_at, id) as game
+    from public.match_history
+  ) h;
+$$;
+
+create or replace function public.admin_delete_match(p_pin text, p_id bigint)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  delete from public.match_history where id = p_id;
+  return public.get_history();
+end;
+$$;
+
 -- Завершение игры. Комнаты с ботами считаются тестовыми, очки в них не начисляются.
 create or replace function public.finish_room(p_code text, p_winner integer, p_mvp text)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
@@ -452,6 +518,7 @@ begin
       end loop;
     end loop;
     perform public._award(public._nick(s, p_mvp), 20, 0, 0, 1, 0);
+    perform public._record_match(v_room.code, s, p_winner, p_mvp);
   end if;
 
   s := s || jsonb_build_object(
@@ -698,6 +765,11 @@ revoke all on function public.admin_delete_score(text, text) from public, anon;
 grant execute on function public.admin_add_signup(text, text) to authenticated;
 grant execute on function public.admin_set_score(text, text, integer, integer, integer, integer) to authenticated;
 grant execute on function public.admin_delete_score(text, text) to authenticated;
+revoke all on function public._record_match(text, jsonb, integer, text) from public, anon, authenticated;
+revoke all on function public.get_history() from public, anon;
+revoke all on function public.admin_delete_match(text, bigint) from public, anon;
+grant execute on function public.get_history() to authenticated;
+grant execute on function public.admin_delete_match(text, bigint) to authenticated;
 revoke all on function public.get_next_game() from public, anon;
 revoke all on function public.join_game(text) from public, anon;
 revoke all on function public.leave_game() from public, anon;
