@@ -1,5 +1,5 @@
 import { html, nothing } from '../vendor/lit-html.js';
-import { isHost, draftClock } from './main.js';
+import { isHost, draftClock, currentGame } from './main.js';
 import { predict } from './prediction.js';
 
 const ATTRS = [['str', 'Сила'], ['agi', 'Ловкость'], ['int', 'Интеллект'], ['all', 'Универсальные']];
@@ -172,28 +172,51 @@ function homeView(app, a) {
   </section>`;
 }
 
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
 function gameDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   const date = new Date(y, m - 1, d);
+  const wd = date.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '');
   return {
     day: date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
     weekday: date.toLocaleDateString('ru-RU', { weekday: 'long' }),
+    short: `${wd.charAt(0).toUpperCase()}${wd.slice(1)}, ${d} ${MONTHS_SHORT[m - 1]}`,
   };
 }
 
+const meetLabel = g => (g.meet >= 1 && g.meet <= 5 ? ` · Сбор ${g.meet} из 5` : '');
+
+// Вкладки появляются, когда назначено больше одной игры.
+function gameTabs(app, a, games, game, limit) {
+  if (games.length < 2) return nothing;
+  return html`<div class="game-tabs" role="tablist">
+    ${games.map(g => {
+      const mine = g.players.some(p => p.mine);
+      return html`<button role="tab" aria-selected=${g.id === game.id ? 'true' : 'false'} class=${cls('game-tab', g.id === game.id && 'on')} @click=${() => a.selectGame(g.id)}>
+        <b>${gameDate(g.date).short}</b>
+        <span>${g.time ? g.time + ' · ' : ''}${g.players.length}/${limit}</span>
+        ${mine ? html`<em>ты в списке</em>` : nothing}
+      </button>`;
+    })}
+  </div>`;
+}
+
 function gameCard(app, a) {
-  const g = app.game;
-  const game = g?.game;
-  const players = g?.players || [];
-  const limit = g?.limit || 10;
+  const games = app.game?.games || [];
+  const game = currentGame();
+  const players = game?.players || [];
+  const limit = app.game?.limit || 10;
   const mine = players.some(p => p.mine);
   const full = players.length >= limit;
   const when = game ? gameDate(game.date) : null;
+  const first = !game || game.id === games[0]?.id;
   const onJoin = e => { e.preventDefault(); a.joinGame(); };
   return html`<section class="game-card">
+    ${game ? gameTabs(app, a, games, game, limit) : nothing}
     <div class="game-head">
       <div>
-        <p class="eyebrow">Ближайшая игра</p>
+        <p class="eyebrow">${first ? 'Ближайшая игра' : 'Следующая игра'}${game ? meetLabel(game) : ''}</p>
         ${when
           ? html`<p class="game-date">${when.day}</p><p class="game-when">${when.weekday}${game.time ? `, ${game.time} UTC+3 (мск)` : ''}</p>`
           : html`<p class="game-date">Дата скоро</p><p class="game-when">Организатор объявит дату здесь</p>`}
@@ -218,7 +241,7 @@ function gameCard(app, a) {
           <button class=${cls('btn', !full && 'primary')} ?disabled=${app.busy}>${full ? 'Это мой ник' : 'Присоединиться'}</button>
         </form>`}
     ` : nothing}
-    <button class="link dim game-admin" @click=${a.openAdmin}>${app.adminPin ? 'Управление игрой' : 'Организатор'}</button>
+    <button class="link dim game-admin" @click=${a.openAdmin}>${app.adminPin ? 'Управление играми' : 'Организатор'}</button>
   </section>`;
 }
 
@@ -621,24 +644,44 @@ function adminOverlay(app, a) {
       <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Войти</button></div>
     </form>`);
   }
-  const game = app.game?.game;
+  const games = app.game?.games || [];
+  const game = currentGame();
+  const limit = app.game?.limit || 10;
+  const add = e => { e.preventDefault(); const form = e.target, f = form.elements; a.adminAddGame(f.date.value, f.time.value, () => form.reset()); };
   const save = e => { e.preventDefault(); const f = e.target.elements; a.adminSave(f.date.value, f.time.value); };
-  return overlay(a, 'Управление игрой', html`<form class="admin-form" @submit=${save}>
+  const label = g => `${gameDate(g.date).short}${g.time ? ', ' + g.time + ' мск' : ''}`;
+  return overlay(a, 'Управление играми', html`
+  <h3 class="adm-h">Ближайшие игры</h3>
+  ${games.length ? html`<ul class="adm-games">
+    ${games.map(g => html`<li class=${cls(g.id === game?.id && 'on')}>
+      <button class="adm-pick" @click=${() => a.selectGame(g.id)}><b>${label(g)}</b><span>${g.players.length}/${limit}</span></button>
+      <button class="btn ghost small" ?disabled=${app.busy} @click=${() => a.adminRemoveGame(g.id)}>Снять</button>
+    </li>`)}
+  </ul>` : html`<p class="hint">Игр пока нет. Добавь первую дату ниже.</p>`}
+  <form class="admin-form adm-add" @submit=${add}>
     <div class="admin-row">
-      <label class="field"><span>Дата игры</span><input name="date" type="date" required .value=${game?.date || ''}></label>
-      <label class="field"><span>Время UTC+3, мск (необязательно)</span><input name="time" type="time" .value=${game?.time || ''}></label>
+      <label class="field"><span>Дата новой игры</span><input name="date" type="date" required></label>
+      <label class="field"><span>Время UTC+3, мск (необязательно)</span><input name="time" type="time"></label>
     </div>
-    <p class="hint">Если дата уже назначена, список игроков при её смене сохранится.</p>
-    <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Сохранить</button></div>
+    <div class="controls end"><button class="btn primary" ?disabled=${app.busy}>Добавить игру</button></div>
   </form>
-  ${game ? html`<form class="inline admin-add" @submit=${e => { e.preventDefault(); const f = e.target.elements.signup; a.adminAddSignup(f.value); f.value = ''; }}>
-    <input name="signup" maxlength="24" placeholder="Ник игрока" aria-label="Ник игрока">
-    <button class="btn small" ?disabled=${app.busy}>Вписать в список</button>
-  </form>` : nothing}
-  ${game ? html`<div class="controls">
-    <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminClearList}>Очистить список</button>
-    <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminRemoveGame}>Снять игру</button>
-  </div>` : nothing}
+  ${game ? html`
+    <h3 class="adm-h">Выбрана: ${label(game)}</h3>
+    <p class="hint adm-note">Нажми на дату в списке выше, чтобы выбрать другую. Список игроков выбранной даты открыт на главной, там можно убрать игрока крестиком.</p>
+    <form class="admin-form" @submit=${save}>
+      <div class="admin-row">
+        <label class="field"><span>Дата</span><input name="date" type="date" required .value=${game.date}></label>
+        <label class="field"><span>Время UTC+3, мск</span><input name="time" type="time" .value=${game.time || ''}></label>
+      </div>
+      <div class="controls end"><button class="btn small" ?disabled=${app.busy}>Сохранить дату</button></div>
+    </form>
+    <form class="inline admin-add" @submit=${e => { e.preventDefault(); const f = e.target.elements.signup; a.adminAddSignup(f.value); f.value = ''; }}>
+      <input name="signup" maxlength="24" placeholder="Ник игрока" aria-label="Ник игрока">
+      <button class="btn small" ?disabled=${app.busy}>Вписать в список</button>
+    </form>
+    <div class="controls">
+      <button class="btn ghost small" ?disabled=${app.busy} @click=${a.adminClearList}>Очистить список</button>
+    </div>` : nothing}
   <div class="controls" style="justify-content:space-between">
     <button class="link strong" @click=${a.openScores}>Изменить очки в таблице</button>
     <button class="link dim" @click=${a.adminLock}>Выйти из режима организатора</button>

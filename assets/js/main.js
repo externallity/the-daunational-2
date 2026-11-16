@@ -21,6 +21,7 @@ export const app = {
   winrates: null,
   reveal: null,
   game: null,
+  gameSel: null,
   adminPin: null,
   adminReturn: null,
   room: null,
@@ -153,6 +154,7 @@ async function run(task) {
     console.error(e);
     app.error = api.errorText(e);
     sync();
+    if (!app.room) refreshGame();
   } finally {
     app.busy = false;
     draw();
@@ -183,14 +185,23 @@ function askNick(nick, onYes) {
   });
 }
 
+// Дата, открытая на главной: выбранная вкладка или ближайшая игра.
+export const currentGame = () => {
+  const list = app.game?.games || [];
+  return list.find(g => g.id === app.gameSel) || list[0] || null;
+};
+
 export const actions = {
   setNick: v => { app.nick = v; },
+  selectGame: id => { app.gameSel = id; app.error = ''; draw(); },
 
   joinGame() {
     const nick = app.nick.trim();
     if (!nick) { app.error = 'Сначала укажи ник.'; draw(); return; }
     const key = nick.toLowerCase();
-    const seat = app.game?.players.find(p => !p.mine && p.nick.toLowerCase() === key);
+    const game = currentGame();
+    if (!game) return;
+    const seat = game.players.find(p => !p.mine && p.nick.toLowerCase() === key);
     if (seat) {
       ask({
         title: 'Это ты?',
@@ -200,21 +211,23 @@ export const actions = {
         yesLabel: 'Да, это я',
         onYes: () => {
           store.set(NICK_KEY, seat.nick);
-          run(async () => { app.game = await api.reclaimSignup(seat.nick); });
+          run(async () => { app.game = await api.reclaimSignup(seat.nick, game.id); });
         },
       });
       return;
     }
     askNick(nick, () => {
       store.set(NICK_KEY, nick);
-      run(async () => { app.game = await api.joinGame(nick); });
+      run(async () => { app.game = await api.joinGame(nick, game.id); });
     });
   },
   leaveGame() {
+    const game = currentGame();
+    if (!game) return;
     ask({
       text: 'Выйти из стака на эту игру? Твоё место освободится.',
       yesLabel: 'Выйти',
-      onYes: () => run(async () => { app.game = await api.leaveGame(); }),
+      onYes: () => run(async () => { app.game = await api.leaveGame(game.id); }),
     });
   },
   openAdmin(ret) { app.adminReturn = ['scores', 'history'].includes(ret) ? ret : null; app.overlay = 'admin'; draw(); },
@@ -228,7 +241,9 @@ export const actions = {
   },
   adminAddSignup(nick) {
     if (!nick.trim()) return;
-    run(async () => { app.game = await api.adminAddSignup(app.adminPin, nick.trim()); });
+    const game = currentGame();
+    if (!game) return;
+    run(async () => { app.game = await api.adminAddSignup(app.adminPin, nick.trim(), game.id); });
   },
   adminSaveScore(nick, s) {
     run(async () => { await api.adminSetScore(app.adminPin, nick, s); app.scores = await api.getScores(); });
@@ -238,21 +253,36 @@ export const actions = {
       onYes: () => run(async () => { await api.adminDeleteScore(app.adminPin, nick); app.scores = await api.getScores(); }) });
   },
   adminLock: () => { app.adminPin = null; app.overlay = null; draw(); },
-  adminSave(date, time) {
+  adminAddGame(date, time, done) {
     if (!date) { app.error = 'Укажи дату игры.'; draw(); return; }
-    run(async () => { app.game = await api.adminSetGame(app.adminPin, date, time); app.overlay = null; });
+    run(async () => {
+      const before = new Set((app.game?.games || []).map(g => g.id));
+      app.game = await api.adminAddGame(app.adminPin, date, time);
+      app.gameSel = app.game.games.find(g => !before.has(g.id))?.id ?? app.gameSel;
+      done?.();
+    });
+  },
+  adminSave(date, time) {
+    const game = currentGame();
+    if (!game) return;
+    if (!date) { app.error = 'Укажи дату игры.'; draw(); return; }
+    run(async () => { app.game = await api.adminSetGame(app.adminPin, date, time, game.id); });
   },
   adminClearList() {
-    ask({ text: 'Очистить список игроков? Дата останется.', yesLabel: 'Очистить',
-      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, true); }) });
+    const game = currentGame();
+    if (!game) return;
+    ask({ text: 'Очистить список игроков на эту дату? Дата останется.', yesLabel: 'Очистить',
+      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, true, game.id); }) });
   },
-  adminRemoveGame() {
-    ask({ text: 'Снять игру с главной? Список игроков тоже удалится.', yesLabel: 'Снять игру',
-      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, false); app.overlay = null; }) });
+  adminRemoveGame(id) {
+    ask({ text: 'Снять эту игру с главной? Её список игроков тоже удалится.', yesLabel: 'Снять игру',
+      onYes: () => run(async () => { app.game = await api.adminClearGame(app.adminPin, false, id); }) });
   },
   adminRemovePlayer(nick) {
+    const game = currentGame();
+    if (!game) return;
     ask({ text: `Убрать ${nick} из списка?`, yesLabel: 'Убрать',
-      onYes: () => run(async () => { app.game = await api.adminRemoveSignup(app.adminPin, nick); }) });
+      onYes: () => run(async () => { app.game = await api.adminRemoveSignup(app.adminPin, nick, game.id); }) });
   },
   setCode: v => { app.codeInput = v.toUpperCase(); },
 

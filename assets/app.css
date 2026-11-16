@@ -198,6 +198,26 @@ input::placeholder { color: #5b6270; }
 .game-status { font: 800 22px/1.1 var(--display); text-transform: uppercase; color: var(--team-a); }
 .game-full { margin-bottom: 8px; }
 .game-admin { display: block; margin: 8px 0 0 auto; font-size: 13px; font-weight: 400; }
+.game-tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+.game-tabs::-webkit-scrollbar { display: none; }
+.game-tab { position: relative; flex: 1 0 0; min-width: 118px; padding: 8px 10px 7px; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; color: var(--text); cursor: pointer; font: inherit; }
+.game-tab b { display: block; font: 900 20px/1 var(--display); text-transform: uppercase; white-space: nowrap; }
+.game-tab span { display: block; margin-top: 3px; font-size: 12px; color: var(--dim); white-space: nowrap; }
+.game-tab em { position: absolute; top: 6px; right: 8px; font: 800 9px/1 var(--body); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--team-a); }
+.game-tab:hover { border-color: #4a505c; }
+.game-tab.on { border-color: var(--signal); background: rgb(255 200 61 / .08); }
+.game-tab.on b { color: var(--signal); }
+.game-tab:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.adm-h { margin: 18px 0 8px; font: 900 22px/1 var(--display); text-transform: uppercase; }
+.adm-h:first-child { margin-top: 0; }
+.adm-games { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+.adm-games li { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 0; background: var(--panel-2); border: 1px solid transparent; border-radius: 4px; }
+.adm-games li.on { border-color: var(--signal); }
+.adm-pick { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 12px; background: none; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.adm-pick b { font: 900 20px/1 var(--display); text-transform: uppercase; }
+.adm-pick span { color: var(--dim); font-size: 14px; }
+.adm-add { margin-top: 12px; }
+.adm-note { margin: -2px 0 8px; font-size: 13px; }
 .admin-form .field { margin-bottom: 4px; }
 .admin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 input[type='date'], input[type='time'] { color-scheme: dark; }

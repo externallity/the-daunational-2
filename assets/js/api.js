@@ -33,7 +33,8 @@ const ERRORS = {
   BAD_PIN: 'Неверный PIN организатора.',
   GAME_FULL: 'Стак уже собран: все 10 мест заняты.',
   ALREADY_IN: 'Ты уже в списке на эту игру.',
-  NO_GAME: 'Дата игры пока не назначена.',
+  NO_GAME: 'Этой игры уже нет в списке. Состояние обновлено.',
+  GAME_EXISTS: 'Игра на эту дату и время уже есть.',
   BAD_DATE: 'Укажи дату игры.',
   BAD_SCORE: 'Значения должны быть целыми и не меньше нуля.',
   BAD_NICK: 'Ник должен быть от 1 до 24 символов.',
@@ -95,14 +96,15 @@ export const roomAction = (code, action, args = {}) => rpc('room_action', { p_co
 export const finishRoom = (code, winner, mvp) => rpc('finish_room', { p_code: code, p_winner: winner, p_mvp: mvp });
 
 export const getNextGame = () => rpc('get_next_game', {});
-export const joinGame = nick => rpc('join_game', { p_nick: nick });
-export const reclaimSignup = nick => rpc('reclaim_signup', { p_nick: nick });
-export const leaveGame = () => rpc('leave_game', {});
+export const joinGame = (nick, game) => rpc('join_game', { p_nick: nick, p_game: game ?? null });
+export const reclaimSignup = (nick, game) => rpc('reclaim_signup', { p_nick: nick, p_game: game ?? null });
+export const leaveGame = game => rpc('leave_game', { p_game: game ?? null });
 export const adminCheck = pin => rpc('admin_check', { p_pin: pin });
-export const adminSetGame = (pin, date, time) => rpc('admin_set_game', { p_pin: pin, p_date: date, p_time: time || null });
-export const adminClearGame = (pin, keepGame) => rpc('admin_clear_game', { p_pin: pin, p_keep_game: keepGame });
-export const adminRemoveSignup = (pin, nick) => rpc('admin_remove_signup', { p_pin: pin, p_nick: nick });
-export const adminAddSignup = (pin, nick) => rpc('admin_add_signup', { p_pin: pin, p_nick: nick });
+export const adminAddGame = (pin, date, time) => rpc('admin_add_game', { p_pin: pin, p_date: date, p_time: time || null });
+export const adminSetGame = (pin, date, time, game) => rpc('admin_set_game', { p_pin: pin, p_date: date, p_time: time || null, p_game: game ?? null });
+export const adminClearGame = (pin, keepGame, game) => rpc('admin_clear_game', { p_pin: pin, p_keep_game: keepGame, p_game: game ?? null });
+export const adminRemoveSignup = (pin, nick, game) => rpc('admin_remove_signup', { p_pin: pin, p_nick: nick, p_game: game ?? null });
+export const adminAddSignup = (pin, nick, game) => rpc('admin_add_signup', { p_pin: pin, p_nick: nick, p_game: game ?? null });
 export const adminSetScore = (pin, nick, s) => rpc('admin_set_score', { p_pin: pin, p_nick: nick, p_points: s.points, p_wins: s.wins, p_games: s.games, p_mvp: s.mvp });
 export const adminDeleteScore = (pin, nick) => rpc('admin_delete_score', { p_pin: pin, p_nick: nick });
 export const getHistory = () => rpc('get_history', {});
