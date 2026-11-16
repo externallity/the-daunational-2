@@ -564,24 +564,43 @@ end $$;
 -- Ближайшая игра и запись в стак (главная страница)
 -- ============================================================
 
-create table if not exists public.next_game (
-  id integer primary key default 1 check (id = 1),
+-- Несколько будущих игр: у каждой своя дата и свой список на 10 мест.
+create table if not exists public.games (
+  id bigserial primary key,
   play_date date not null,
   play_time time,
-  updated_at timestamptz not null default now()
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.game_signups (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   nick text not null check (length(btrim(nick)) between 1 and 24),
   created_at timestamptz not null default now()
 );
-create unique index if not exists game_signups_nick_key on public.game_signups (lower(nick));
 
 -- Запись без аккаунта: организатор вписывает игрока по нику (user_id пустой).
 alter table public.game_signups drop constraint if exists game_signups_pkey;
 alter table public.game_signups alter column user_id drop not null;
-create unique index if not exists game_signups_user_key on public.game_signups (user_id) where user_id is not null;
+alter table public.game_signups add column if not exists game_id bigint references public.games(id) on delete cascade;
+
+-- Перенос из прежней схемы с одной игрой (таблица next_game): игра и её список переходят в games.
+do $$
+begin
+  if to_regclass('public.next_game') is not null then
+    if exists (select 1 from public.next_game) then
+      insert into public.games(play_date, play_time) select play_date, play_time from public.next_game;
+      update public.game_signups set game_id = (select max(id) from public.games) where game_id is null;
+    end if;
+    drop table public.next_game;
+  end if;
+  delete from public.game_signups where game_id is null;
+end $$;
+alter table public.game_signups alter column game_id set not null;
+
+drop index if exists public.game_signups_nick_key;
+drop index if exists public.game_signups_user_key;
+create unique index if not exists game_signups_game_nick_key on public.game_signups (game_id, lower(nick));
+create unique index if not exists game_signups_game_user_key on public.game_signups (game_id, user_id) where user_id is not null;
 
 -- PIN организатора. Значение задаётся отдельно и в репозиторий не попадает.
 create table if not exists public.admin_secret (
@@ -590,10 +609,10 @@ create table if not exists public.admin_secret (
   pin_hash text not null
 );
 
-alter table public.next_game enable row level security;
+alter table public.games enable row level security;
 alter table public.game_signups enable row level security;
 alter table public.admin_secret enable row level security;
-revoke all on public.next_game, public.game_signups, public.admin_secret from anon, authenticated;
+revoke all on public.games, public.game_signups, public.admin_secret from anon, authenticated;
 
 create or replace function public._check_pin(p_pin text)
 returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -607,65 +626,113 @@ begin
 end;
 $$;
 
-create or replace function public.get_next_game()
-returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_uid uuid := auth.uid();
+-- Игра для действия: указанная или ближайшая. Строка блокируется, поэтому одновременные записи не превысят лимит.
+create or replace function public._lock_game(p_game bigint)
+returns bigint language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_id bigint;
 begin
-  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
-  return jsonb_build_object(
-    'limit', 10,
-    'game', (select jsonb_build_object('date', play_date, 'time', to_char(play_time, 'HH24:MI')) from public.next_game),
-    'players', coalesce((
-      select jsonb_agg(jsonb_build_object('nick', nick, 'mine', coalesce(user_id = v_uid, false)) order by created_at)
-      from public.game_signups), '[]'::jsonb));
+  select id into v_id from public.games
+   where p_game is null or id = p_game
+   order by play_date, play_time nulls last, id
+   limit 1 for update;
+  if v_id is null then raise exception 'NO_GAME'; end if;
+  return v_id;
 end;
 $$;
 
-create or replace function public.join_game(p_nick text)
+-- Все будущие игры по порядку. game и players повторяют ближайшую игру для старых версий страницы.
+-- meet: номер сбора, считается по дням сыгранных игр до этой даты и по назначенным датам.
+create or replace function public.get_next_game()
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+  v_games jsonb;
+begin
+  if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
+  select coalesce(jsonb_agg(x.j order by x.play_date, x.play_time nulls last, x.id), '[]'::jsonb) into v_games
+  from (
+    select g.id, g.play_date, g.play_time, jsonb_build_object(
+      'id', g.id,
+      'date', g.play_date,
+      'time', to_char(g.play_time, 'HH24:MI'),
+      'meet', (select count(distinct u.d) from (
+          select (h.played_at at time zone 'Europe/Moscow')::date as d from public.match_history h
+           where (h.played_at at time zone 'Europe/Moscow')::date < g.play_date
+          union
+          select g2.play_date from public.games g2 where g2.play_date <= g.play_date) u),
+      'players', coalesce((
+          select jsonb_agg(jsonb_build_object('nick', s.nick, 'mine', coalesce(s.user_id = v_uid, false)) order by s.created_at)
+          from public.game_signups s where s.game_id = g.id), '[]'::jsonb)
+    ) as j
+    from public.games g
+  ) x;
+  return jsonb_build_object(
+    'limit', 10,
+    'games', v_games,
+    'game', case when jsonb_array_length(v_games) > 0
+                 then jsonb_build_object('date', v_games->0->'date', 'time', v_games->0->'time') end,
+    'players', coalesce(v_games->0->'players', '[]'::jsonb));
+end;
+$$;
+
+drop function if exists public.join_game(text);
+drop function if exists public.reclaim_signup(text);
+drop function if exists public.leave_game();
+drop function if exists public.admin_set_game(text, date, time);
+drop function if exists public.admin_clear_game(text, boolean);
+drop function if exists public.admin_remove_signup(text, text);
+drop function if exists public.admin_add_signup(text, text);
+
+create or replace function public.join_game(p_nick text, p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_uid uuid := auth.uid();
   v_nick text := btrim(p_nick);
+  v_game bigint;
 begin
   if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
   if length(v_nick) not between 1 and 24 then raise exception 'BAD_NICK'; end if;
-  -- Блокировка строки игры: одновременные записи не превысят лимит.
-  perform 1 from public.next_game for update;
-  if not found then raise exception 'NO_GAME'; end if;
-  if exists (select 1 from public.game_signups where user_id = v_uid) then raise exception 'ALREADY_IN'; end if;
+  v_game := public._lock_game(p_game);
+  if exists (select 1 from public.game_signups where game_id = v_game and user_id = v_uid) then raise exception 'ALREADY_IN'; end if;
   -- Если организатор уже вписал этот ник, игрок просто занимает своё место.
-  update public.game_signups set user_id = v_uid where lower(nick) = lower(v_nick) and user_id is null;
+  update public.game_signups set user_id = v_uid where game_id = v_game and lower(nick) = lower(v_nick) and user_id is null;
   if found then return public.get_next_game(); end if;
-  if (select count(*) from public.game_signups) >= 10 then raise exception 'GAME_FULL'; end if;
-  if exists (select 1 from public.game_signups where lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
-  insert into public.game_signups(user_id, nick) values (v_uid, v_nick);
+  if (select count(*) from public.game_signups where game_id = v_game) >= 10 then raise exception 'GAME_FULL'; end if;
+  if exists (select 1 from public.game_signups where game_id = v_game and lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
+  insert into public.game_signups(game_id, user_id, nick) values (v_game, v_uid, v_nick);
   return public.get_next_game();
 end;
 $$;
 
 -- Возврат своей записи с другого устройства или адреса: игрок подтвердил на сайте, что это его ник.
-create or replace function public.reclaim_signup(p_nick text)
+create or replace function public.reclaim_signup(p_nick text, p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_uid uuid := auth.uid();
+declare
+  v_uid uuid := auth.uid();
+  v_game bigint;
 begin
   if v_uid is null then raise exception 'AUTH_REQUIRED'; end if;
-  perform 1 from public.next_game for update;
-  if not found then raise exception 'NO_GAME'; end if;
-  if exists (select 1 from public.game_signups where user_id = v_uid and lower(nick) <> lower(btrim(p_nick))) then
+  v_game := public._lock_game(p_game);
+  if exists (select 1 from public.game_signups where game_id = v_game and user_id = v_uid and lower(nick) <> lower(btrim(p_nick))) then
     raise exception 'ALREADY_IN';
   end if;
-  update public.game_signups set user_id = v_uid where lower(nick) = lower(btrim(p_nick));
+  update public.game_signups set user_id = v_uid where game_id = v_game and lower(nick) = lower(btrim(p_nick));
   if not found then raise exception 'NO_SEAT'; end if;
   return public.get_next_game();
 end;
 $$;
 
-create or replace function public.leave_game()
+create or replace function public.leave_game(p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_game bigint;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
-  delete from public.game_signups where user_id = auth.uid();
+  v_game := public._lock_game(p_game);
+  delete from public.game_signups where game_id = v_game and user_id = auth.uid();
   return public.get_next_game();
+exception when raise_exception then
+  if sqlerrm = 'NO_GAME' then return public.get_next_game(); end if;
+  raise;
 end;
 $$;
 
@@ -678,52 +745,78 @@ begin
 end;
 $$;
 
-create or replace function public.admin_set_game(p_pin text, p_date date, p_time time default null)
+-- Новая дата. Повтор той же даты и времени отклоняется.
+create or replace function public.admin_add_game(p_pin text, p_date date, p_time time default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
   perform public._check_pin(p_pin);
   if p_date is null then raise exception 'BAD_DATE'; end if;
-  insert into public.next_game(id, play_date, play_time) values (1, p_date, p_time)
-  on conflict (id) do update set play_date = excluded.play_date, play_time = excluded.play_time, updated_at = now();
+  if exists (select 1 from public.games where play_date = p_date and play_time is not distinct from p_time) then
+    raise exception 'GAME_EXISTS';
+  end if;
+  insert into public.games(play_date, play_time) values (p_date, p_time);
+  return public.get_next_game();
+end;
+$$;
+
+-- Смена даты и времени указанной игры. Без p_game: ближайшая игра, а если игр нет, создаётся новая.
+create or replace function public.admin_set_game(p_pin text, p_date date, p_time time default null, p_game bigint default null)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_game bigint;
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+  perform public._check_pin(p_pin);
+  if p_date is null then raise exception 'BAD_DATE'; end if;
+  if p_game is null and not exists (select 1 from public.games) then
+    insert into public.games(play_date, play_time) values (p_date, p_time);
+    return public.get_next_game();
+  end if;
+  v_game := public._lock_game(p_game);
+  update public.games set play_date = p_date, play_time = p_time where id = v_game;
   return public.get_next_game();
 end;
 $$;
 
 -- p_keep_game = true только очищает список, false снимает игру целиком.
-create or replace function public.admin_clear_game(p_pin text, p_keep_game boolean)
+create or replace function public.admin_clear_game(p_pin text, p_keep_game boolean, p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_game bigint;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
   perform public._check_pin(p_pin);
-  delete from public.game_signups where true;
-  if not p_keep_game then delete from public.next_game where true; end if;
+  v_game := public._lock_game(p_game);
+  delete from public.game_signups where game_id = v_game;
+  if not p_keep_game then delete from public.games where id = v_game; end if;
   return public.get_next_game();
 end;
 $$;
 
-create or replace function public.admin_remove_signup(p_pin text, p_nick text)
+create or replace function public.admin_remove_signup(p_pin text, p_nick text, p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_game bigint;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
   perform public._check_pin(p_pin);
-  delete from public.game_signups where lower(nick) = lower(btrim(p_nick));
+  v_game := public._lock_game(p_game);
+  delete from public.game_signups where game_id = v_game and lower(nick) = lower(btrim(p_nick));
   return public.get_next_game();
 end;
 $$;
 
-create or replace function public.admin_add_signup(p_pin text, p_nick text)
+create or replace function public.admin_add_signup(p_pin text, p_nick text, p_game bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_nick text := btrim(p_nick);
+declare
+  v_nick text := btrim(p_nick);
+  v_game bigint;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
   perform public._check_pin(p_pin);
   if length(v_nick) not between 1 and 24 then raise exception 'BAD_NICK'; end if;
-  perform 1 from public.next_game for update;
-  if not found then raise exception 'NO_GAME'; end if;
-  if (select count(*) from public.game_signups) >= 10 then raise exception 'GAME_FULL'; end if;
-  if exists (select 1 from public.game_signups where lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
-  insert into public.game_signups(user_id, nick) values (null, v_nick);
+  v_game := public._lock_game(p_game);
+  if (select count(*) from public.game_signups where game_id = v_game) >= 10 then raise exception 'GAME_FULL'; end if;
+  if exists (select 1 from public.game_signups where game_id = v_game and lower(nick) = lower(v_nick)) then raise exception 'NICK_TAKEN'; end if;
+  insert into public.game_signups(game_id, user_id, nick) values (v_game, null, v_nick);
   return public.get_next_game();
 end;
 $$;
@@ -759,10 +852,10 @@ end;
 $$;
 
 revoke all on function public._check_pin(text) from public, anon, authenticated;
-revoke all on function public.admin_add_signup(text, text) from public, anon;
+revoke all on function public.admin_add_signup(text, text, bigint) from public, anon;
 revoke all on function public.admin_set_score(text, text, integer, integer, integer, integer) from public, anon;
 revoke all on function public.admin_delete_score(text, text) from public, anon;
-grant execute on function public.admin_add_signup(text, text) to authenticated;
+grant execute on function public.admin_add_signup(text, text, bigint) to authenticated;
 grant execute on function public.admin_set_score(text, text, integer, integer, integer, integer) to authenticated;
 grant execute on function public.admin_delete_score(text, text) to authenticated;
 revoke all on function public._record_match(text, jsonb, integer, text) from public, anon, authenticated;
@@ -770,22 +863,25 @@ revoke all on function public.get_history() from public, anon;
 revoke all on function public.admin_delete_match(text, bigint) from public, anon;
 grant execute on function public.get_history() to authenticated;
 grant execute on function public.admin_delete_match(text, bigint) to authenticated;
+revoke all on function public._lock_game(bigint) from public, anon, authenticated;
 revoke all on function public.get_next_game() from public, anon;
-revoke all on function public.join_game(text) from public, anon;
-revoke all on function public.leave_game() from public, anon;
-revoke all on function public.reclaim_signup(text) from public, anon;
-grant execute on function public.reclaim_signup(text) to authenticated;
+revoke all on function public.join_game(text, bigint) from public, anon;
+revoke all on function public.leave_game(bigint) from public, anon;
+revoke all on function public.reclaim_signup(text, bigint) from public, anon;
 revoke all on function public.admin_check(text) from public, anon;
-revoke all on function public.admin_set_game(text, date, time) from public, anon;
-revoke all on function public.admin_clear_game(text, boolean) from public, anon;
-revoke all on function public.admin_remove_signup(text, text) from public, anon;
+revoke all on function public.admin_add_game(text, date, time) from public, anon;
+revoke all on function public.admin_set_game(text, date, time, bigint) from public, anon;
+revoke all on function public.admin_clear_game(text, boolean, bigint) from public, anon;
+revoke all on function public.admin_remove_signup(text, text, bigint) from public, anon;
 grant execute on function public.get_next_game() to authenticated;
-grant execute on function public.join_game(text) to authenticated;
-grant execute on function public.leave_game() to authenticated;
+grant execute on function public.join_game(text, bigint) to authenticated;
+grant execute on function public.leave_game(bigint) to authenticated;
+grant execute on function public.reclaim_signup(text, bigint) to authenticated;
 grant execute on function public.admin_check(text) to authenticated;
-grant execute on function public.admin_set_game(text, date, time) to authenticated;
-grant execute on function public.admin_clear_game(text, boolean) to authenticated;
-grant execute on function public.admin_remove_signup(text, text) to authenticated;
+grant execute on function public.admin_add_game(text, date, time) to authenticated;
+grant execute on function public.admin_set_game(text, date, time, bigint) to authenticated;
+grant execute on function public.admin_clear_game(text, boolean, bigint) to authenticated;
+grant execute on function public.admin_remove_signup(text, text, bigint) to authenticated;
 
 -- ============================================================
 -- Каталог героев (сгенерирован из heroes.json)
